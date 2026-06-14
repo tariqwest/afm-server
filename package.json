@@ -1,0 +1,28 @@
+{
+  "name": "afm-js-monorepo",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Apple Foundation Models for Node.js / TypeScript — OpenAI-compatible HTTP server + CLI",
+  "license": "MIT",
+  "author": "Tariq West",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "pnpm -r --filter=./packages/* build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --build",
+    "clean": "tsc --build --clean && rm -rf packages/*/dist",
+    "format": "biome format --write .",
+    "lint": "biome lint .",
+    "check": "biome check ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@types/node": "^20.17.10",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "packageManager": "pnpm@9.15.0"
+}

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.build/
+.swiftpm/
+*.tsbuildinfo
+.DS_Store
+.vitest-cache/
+coverage/
+*.log
