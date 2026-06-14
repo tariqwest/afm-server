@@ -4,7 +4,7 @@ Apple Foundation Models for Node.js. OpenAI-compatible HTTP server and CLI for A
 
 A TypeScript / Node.js port of [apfel-plus](https://github.com/tariqwest/apfel-plus) (Swift). Same OpenAI wire format, same `/v1/chat/completions`, `/v1/models`, `/health`, same `--pcc` opt-in to Apple Private Cloud Compute. Reaches the on-device `SystemLanguageModel` (and, on macOS 27+, `PrivateCloudComputeLanguageModel`) via a small Swift helper binary spoken to over newline-JSON.
 
-> **Status:** M1 — minimum viable. On-device chat completions work end-to-end. Streaming, tool calling, MCP, structured outputs, and the `--autostart` LaunchAgent installer arrive in M2/M3.
+> **Status:** M2 — streaming, multi-turn, tool calling, MCP (stdio), and the `prompt` / `chat` CLI subcommands are all wired end-to-end. Structured outputs (`response_format: json_schema`), `--autostart` LaunchAgent installer, and the notarized helper publishing pipeline arrive in M3.
 
 ## Architecture
 
@@ -73,6 +73,32 @@ curl -X POST http://127.0.0.1:11434/v1/chat/completions \
   -H "Authorization: Bearer sk-test" \
   -H "Content-Type: application/json" \
   -d '{"model":"apple-foundationmodel","messages":[{"role":"user","content":"Say hi."}]}'
+```
+
+Streaming:
+
+```bash
+curl -N -X POST http://127.0.0.1:11434/v1/chat/completions \
+  -H "Authorization: Bearer sk-test" -H "Content-Type: application/json" \
+  -d '{"model":"apple-foundationmodel","stream":true,"messages":[{"role":"user","content":"Count to 5."}]}'
+```
+
+With a local MCP server (`--mcp` supports a colon-separated list of `<cmd> <arg…>` specs):
+
+```bash
+node packages/afm-js/bin/afm-js.js serve --port 11434 --mcp "python3 /path/to/mcp/server.py"
+```
+
+## CLI commands
+
+```bash
+afm-js serve [--port N --host H --token T --mcp "<cmd ...>" --debug]
+afm-js prompt "Your prompt here"        # one-shot, prints answer
+afm-js prompt --json "..."               # one-shot, JSON envelope
+echo "What is 2+2?" | afm-js prompt      # reads from stdin
+afm-js chat                              # multi-turn REPL with streaming
+afm-js chat --system "Be brief."         # …with a system prompt
+afm-js prompt --pcc "..."                # route to Private Cloud Compute
 ```
 
 ## Models

@@ -24,6 +24,7 @@ struct Request: Decodable {
         case availability
         case openSession = "openSession"
         case respond
+        case stream
         case closeSession = "closeSession"
         case shutdown
     }
@@ -79,4 +80,23 @@ struct ErrorEnvelope: Encodable {
         let reason: String?
         let message: String
     }
+}
+
+// MARK: - Stream events
+// Streaming is id-correlated like one-shot ops, but each response line is an
+// "event" envelope rather than a single ok-reply. Node sees a sequence of
+// {id, event: "delta", text} followed by exactly one {id, event: "done",
+// finishReason, usage} or {id, ok: false, error}.
+
+struct StreamDelta: Encodable {
+    let id: String
+    let event: String   // "delta"
+    let text: String
+}
+
+struct StreamDone: Encodable {
+    let id: String
+    let event: String   // "done"
+    let finishReason: String
+    let usage: UsageWire
 }

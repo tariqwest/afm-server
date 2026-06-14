@@ -13,6 +13,7 @@ export interface HelperRequest {
     | "availability"
     | "openSession"
     | "respond"
+    | "stream"
     | "closeSession"
     | "shutdown";
   backend?: "on_device" | "pcc";
@@ -58,17 +59,47 @@ export interface HelperErrorEnvelope {
   error: { kind: string; reason?: string; message: string };
 }
 
+/** A streaming delta event: incremental text since the previous frame. */
+export interface HelperStreamDelta {
+  ok?: undefined;
+  id: string;
+  event: "delta";
+  text: string;
+}
+
+/** Terminal frame for a stream request: emitted exactly once on success. */
+export interface HelperStreamDone {
+  ok?: undefined;
+  id: string;
+  event: "done";
+  finishReason: string;
+  usage: { promptTokens: number; completionTokens: number; totalTokens: number };
+}
+
+export type HelperStreamFrame = HelperStreamDelta | HelperStreamDone | HelperErrorEnvelope;
+
 export type HelperReply =
   | HelperOkAvailability
   | HelperOkOpenSession
   | HelperOkRespond
   | HelperOkSimple
-  | HelperErrorEnvelope;
+  | HelperErrorEnvelope
+  | HelperStreamDelta
+  | HelperStreamDone;
 
-type Pending = {
+type PendingUnary = {
+  kind: "unary";
   resolve: (value: HelperReply) => void;
   reject: (err: unknown) => void;
 };
+
+type PendingStream = {
+  kind: "stream";
+  push: (frame: HelperStreamFrame) => void;
+  end: () => void;
+};
+
+type Pending = PendingUnary | PendingStream;
 
 export interface HelperProcessOptions {
   /** Absolute path to the afm-fm-helper binary. */
@@ -131,7 +162,7 @@ export class HelperProcess {
     const line = `${JSON.stringify(envelope)}\n`;
 
     const replyPromise = new Promise<HelperReply>((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
+      this.pending.set(id, { kind: "unary", resolve, reject });
     });
 
     this.child.stdin.write(line);
@@ -149,14 +180,97 @@ export class HelperProcess {
   }
 
   /**
+   * Send a streaming request. Returns an `AsyncIterable<HelperStreamFrame>`
+   * that yields each helper frame as it arrives, terminating after the `done`
+   * envelope or on an error envelope.
+   */
+  streamRequest(req: HelperRequest, signal?: AbortSignal): AsyncIterable<HelperStreamFrame> {
+    if (this.shuttingDown) {
+      throw new Error("HelperProcess is shutting down");
+    }
+    this.start();
+    if (!this.child?.stdin) {
+      throw new Error("HelperProcess: stdin not available");
+    }
+    const id = `r${++this.nextId}`;
+    const envelope = { id, ...req };
+    const line = `${JSON.stringify(envelope)}\n`;
+
+    // Buffered async iterator: incoming frames are pushed; consumers `for await`
+    // pulls. No backpressure on the helper -> we hold the buffer in memory, fine
+    // for token-scale chat responses.
+    type Resolver = (value: IteratorResult<HelperStreamFrame>) => void;
+    const queue: HelperStreamFrame[] = [];
+    const waiters: Resolver[] = [];
+    let done = false;
+
+    const pending: PendingStream = {
+      kind: "stream",
+      push: (frame) => {
+        if (waiters.length > 0) {
+          const r = waiters.shift();
+          r?.({ value: frame, done: false });
+        } else {
+          queue.push(frame);
+        }
+        // Auto-end on terminal frames so callers don't have to drain.
+        const isError = "ok" in frame && frame.ok === false;
+        const isDone = "event" in frame && frame.event === "done";
+        if (isDone || isError) {
+          pending.end();
+        }
+      },
+      end: () => {
+        if (done) return;
+        done = true;
+        this.pending.delete(id);
+        for (const w of waiters.splice(0)) w({ value: undefined, done: true });
+      },
+    };
+    this.pending.set(id, pending);
+
+    const onAbort = () => {
+      pending.end();
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+
+    this.child.stdin.write(line);
+
+    return {
+      [Symbol.asyncIterator](): AsyncIterator<HelperStreamFrame> {
+        return {
+          next(): Promise<IteratorResult<HelperStreamFrame>> {
+            if (queue.length > 0) {
+              return Promise.resolve({ value: queue.shift() as HelperStreamFrame, done: false });
+            }
+            if (done) {
+              return Promise.resolve({ value: undefined, done: true });
+            }
+            return new Promise((resolve) => waiters.push(resolve));
+          },
+          return(): Promise<IteratorResult<HelperStreamFrame>> {
+            pending.end();
+            signal?.removeEventListener("abort", onAbort);
+            return Promise.resolve({ value: undefined, done: true });
+          },
+        };
+      },
+    };
+  }
+
+  /**
    * Convenience wrapper that throws a typed AfmError on an `ok: false` reply
    * and returns the success-path reply otherwise. Callers that need to
    * inspect the raw envelope can still use `request()` directly.
    */
   async call<T extends HelperReply>(req: HelperRequest): Promise<T & { ok: true }> {
     const reply = await this.request(req);
-    if (reply.ok) {
+    if ("ok" in reply && reply.ok === true) {
       return reply as T & { ok: true };
+    }
+    if (!("ok" in reply) || reply.ok !== false) {
+      // Stream frames shouldn't be reachable here; call() is unary-only.
+      throw new Error(`HelperProcess.call: unexpected non-unary reply for op '${req.op}'`);
     }
     const err = reply.error;
     // Convert wire envelope to AfmError. The kinds align by name.
@@ -205,13 +319,21 @@ export class HelperProcess {
         this.debug(`helper: reply for unknown id ${parsed.id}, dropping`);
         continue;
       }
-      pending.resolve(parsed);
+      if (pending.kind === "stream") {
+        pending.push(parsed as HelperStreamFrame);
+      } else {
+        pending.resolve(parsed);
+      }
     }
   }
 
   private failAllPending(err: unknown): void {
     for (const [, p] of this.pending) {
-      p.reject(err);
+      if (p.kind === "stream") {
+        p.end();
+      } else {
+        p.reject(err);
+      }
     }
     this.pending.clear();
   }

@@ -35,6 +35,11 @@ export const serveCommand = defineCommand({
       type: "string",
       description: "Override the afm-fm-helper binary path (defaults to bundled prebuilt).",
     },
+    mcp: {
+      type: "string",
+      description:
+        "Spec for a local stdio MCP server. Format: '<cmd> <arg1> <arg2>'. Repeatable via colon-separated list.",
+    },
   },
   async run({ args }) {
     const debugFn = args.debug ? (msg: string) => process.stderr.write(`afm-js: ${msg}\n`) : undefined;
@@ -46,11 +51,14 @@ export const serveCommand = defineCommand({
       process.exit(2);
     }
 
+    const mcpServers = parseMcpSpecs(args.mcp as string | undefined);
+
     const server = await startServer({
       helperBinaryPath,
       port,
       host: (args.host as string | undefined) ?? "127.0.0.1",
       token: (args.token as string | undefined) ?? null,
+      mcpServers,
       debug: debugFn,
     });
 
@@ -71,6 +79,20 @@ export const serveCommand = defineCommand({
     process.on("SIGTERM", () => void shutdown("SIGTERM"));
   },
 });
+
+/**
+ * Parse `--mcp` argument. Supports a single spec ("python3 server.py") or a
+ * colon-separated list of specs. Whitespace inside a spec is split into the
+ * (command, args[]) pair.
+ */
+function parseMcpSpecs(raw: string | undefined): { command: string; args: string[] }[] {
+  if (!raw) return [];
+  const specs = raw.split(":").map((s) => s.trim()).filter(Boolean);
+  return specs.map((s) => {
+    const parts = s.split(/\s+/);
+    return { command: parts[0] as string, args: parts.slice(1) };
+  });
+}
 
 /**
  * Locate the helper binary. Precedence:

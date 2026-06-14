@@ -70,6 +70,43 @@ export class Session {
     };
   }
 
+  /**
+   * Stream a response. Yields one event per frame from the helper:
+   * `{kind:"delta",text}` (suffix tokens) or `{kind:"done",finishReason,usage}`.
+   * Throws an AfmError if the helper returns an error envelope.
+   */
+  async *stream(
+    prompt: string,
+    options?: SessionOptions,
+    signal?: AbortSignal,
+  ): AsyncGenerator<StreamEvent, void, void> {
+    const frames = this.helper.streamRequest(
+      {
+        op: "stream",
+        session: this.id,
+        prompt,
+        options,
+      },
+      signal,
+    );
+    for await (const frame of frames) {
+      if ("ok" in frame && frame.ok === false) {
+        const err = frame.error;
+        throw AfmError.classify({
+          kind: err.kind as "unknown",
+          message: err.message,
+          ...("reason" in err && err.reason != null ? { reason: err.reason } : {}),
+        });
+      }
+      // Narrowed: only stream frames remain.
+      if (frame.event === "delta") {
+        yield { kind: "delta", text: frame.text };
+      } else if (frame.event === "done") {
+        yield { kind: "done", finishReason: frame.finishReason, usage: frame.usage };
+      }
+    }
+  }
+
   async close(): Promise<void> {
     try {
       await this.helper.call({ op: "closeSession", session: this.id });
@@ -78,3 +115,11 @@ export class Session {
     }
   }
 }
+
+export type StreamEvent =
+  | { kind: "delta"; text: string }
+  | {
+      kind: "done";
+      finishReason: string;
+      usage: { promptTokens: number; completionTokens: number; totalTokens: number };
+    };

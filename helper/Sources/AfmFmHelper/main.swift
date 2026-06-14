@@ -123,6 +123,51 @@ func handleRequest(_ raw: String) async {
                 )
             ))
 
+        case .stream:
+            guard let sid = req.session, let session = registry.get(sid) else {
+                throw HelperError.sessionNotFound(req.session ?? "<nil>")
+            }
+            guard let prompt = req.prompt else {
+                throw HelperError.decodingFailure("stream: missing 'prompt'")
+            }
+            let options = makeGenerationOptions(req.options)
+            // Apple FoundationModels emits cumulative snapshots. We diff each
+            // snapshot against the previous one and emit only the new suffix
+            // so Node receives true delta tokens (matches OpenAI semantics).
+            var prev = ""
+            let snapshots = session.streamResponse(to: prompt, options: options)
+            do {
+                for try await snapshot in snapshots {
+                    let content = snapshot.content
+                    if content.count > prev.count, content.hasPrefix(prev) {
+                        let delta = String(content.dropFirst(prev.count))
+                        if !delta.isEmpty {
+                            writeLine(StreamDelta(id: req.id, event: "delta", text: delta))
+                        }
+                    } else if content != prev {
+                        // Non-prefix replacement: emit the whole new content. Rare
+                        // edge case (e.g. the framework rewrites a partial token)
+                        // but we don't want to drop it silently.
+                        writeLine(StreamDelta(id: req.id, event: "delta", text: content))
+                    }
+                    prev = content
+                }
+                let promptApprox = max(1, prompt.utf8.count / 4)
+                let completionApprox = max(1, prev.utf8.count / 4)
+                writeLine(StreamDone(
+                    id: req.id,
+                    event: "done",
+                    finishReason: "stop",
+                    usage: UsageWire(
+                        promptTokens: promptApprox,
+                        completionTokens: completionApprox,
+                        totalTokens: promptApprox + completionApprox
+                    )
+                ))
+            } catch {
+                writeError(id: req.id, error)
+            }
+
         case .closeSession:
             guard let sid = req.session else {
                 throw HelperError.decodingFailure("closeSession: missing 'session'")

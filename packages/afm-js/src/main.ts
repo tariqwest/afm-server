@@ -5,6 +5,8 @@
 // ============================================================================
 
 import { defineCommand, runMain } from "citty";
+import { chatCommand } from "./commands/chat.js";
+import { promptCommand } from "./commands/prompt.js";
 import { serveCommand } from "./commands/serve.js";
 
 const main = defineCommand({
@@ -16,6 +18,8 @@ const main = defineCommand({
   },
   subCommands: {
     serve: serveCommand,
+    prompt: promptCommand,
+    chat: chatCommand,
   },
 });
 
