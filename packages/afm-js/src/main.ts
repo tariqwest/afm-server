@@ -4,10 +4,13 @@
 // ============================================================================
 
 import { defineCommand, runMain } from "citty";
-import { benchmarkCommand } from "./commands/benchmark.js";
+import { availableCommand } from "./commands/available.js";
 import { chatCommand } from "./commands/chat.js";
-import { promptCommand } from "./commands/prompt.js";
+import { quotaUsageCommand } from "./commands/quota-usage.js";
+import { respondCommand } from "./commands/respond.js";
+import { schemaCommand } from "./commands/schema.js";
 import { serveCommand } from "./commands/serve.js";
+import { tokenCountCommand } from "./commands/token-count.js";
 
 const main = defineCommand({
   meta: {
@@ -18,9 +21,12 @@ const main = defineCommand({
   },
   subCommands: {
     serve: serveCommand,
-    prompt: promptCommand,
+    respond: respondCommand,
     chat: chatCommand,
-    benchmark: benchmarkCommand,
+    "token-count": tokenCountCommand,
+    schema: schemaCommand,
+    available: availableCommand,
+    "quota-usage": quotaUsageCommand,
   },
 });
 

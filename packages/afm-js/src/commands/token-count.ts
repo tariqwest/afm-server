@@ -1,39 +1,32 @@
 // ============================================================================
-// prompt.ts — `afm-js prompt "..."`. Send a single prompt, print the answer.
-// `--json` emits a tiny machine-readable envelope so shell scripts can pipe
-// the result safely.
+// token-count.ts — `afm-js token-count "..."`. Count tokens without generating.
+// Mirrors Apple's `fm token-count` command.
 // ============================================================================
 
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineCommand } from "citty";
-import { HelperProcess, Session, UnifiedBackend } from "@afm-js/server";
-import { ModelBackend } from "@afm-js/core";
+import { HelperProcess, UnifiedBackend } from "@afm-js/server";
 
-export const promptCommand = defineCommand({
+export const tokenCountCommand = defineCommand({
   meta: {
-    name: "prompt",
-    description: "Send a single prompt and print the response.",
+    name: "token-count",
+    description: "Count tokens in a prompt or instructions without generating.",
   },
   args: {
     text: {
       type: "positional",
       required: false,
-      description: "The prompt text. If omitted, reads from stdin.",
+      description: "The text to count. If omitted, reads from stdin.",
     },
-    pcc: {
-      type: "boolean",
-      description:
-        "Route the request to Apple Private Cloud Compute instead of the on-device model.",
+    instructions: {
+      type: "string",
+      description: "Instructions to include in token count.",
     },
     json: {
       type: "boolean",
       description: "Emit a JSON envelope instead of plain text.",
-    },
-    system: {
-      type: "string",
-      description: "Optional system prompt.",
     },
     helper: {
       type: "string",
@@ -41,11 +34,11 @@ export const promptCommand = defineCommand({
     },
   },
   async run({ args }) {
-    const promptText = args.text
+    const text = args.text
       ? String(args.text)
       : await readAllStdin();
-    if (!promptText.trim()) {
-      process.stderr.write("afm-js: no prompt provided\n");
+    if (!text.trim() && !args.instructions) {
+      process.stderr.write("afm-js: no text or instructions provided\n");
       process.exit(2);
     }
 
@@ -53,24 +46,30 @@ export const promptCommand = defineCommand({
     helper.start();
     const backend = UnifiedBackend.createHelper(helper);
 
-    const modelBackend = args.pcc ? ("privateCloudCompute" as const) : ("onDevice" as const);
-    const session = await Session.open(backend, modelBackend, args.system as string | undefined);
     try {
-      const result = await session.respond(promptText);
+      // Use the backend to get token count
+      const reply = await backend.call({
+        op: "tokenCount",
+        prompt: text,
+        instructions: args.instructions as string | undefined,
+      });
+
       if (args.json) {
         process.stdout.write(
           `${JSON.stringify({
-            model: ModelBackend.canonicalModelID(modelBackend),
-            content: result.content,
-            finish_reason: result.finishReason,
-            usage: result.usage,
+            prompt_tokens: reply.promptTokens ?? 0,
+            instructions_tokens: reply.instructionsTokens ?? 0,
+            total_tokens: reply.totalTokens ?? 0,
           })}\n`,
         );
       } else {
-        process.stdout.write(`${result.content}\n`);
+        const total = reply.totalTokens ?? 0;
+        process.stdout.write(`${total}\n`);
       }
+    } catch (err) {
+      process.stderr.write(`afm-js: token count failed: ${err}\n`);
+      process.exit(1);
     } finally {
-      await session.close();
       await helper.shutdown();
     }
   },

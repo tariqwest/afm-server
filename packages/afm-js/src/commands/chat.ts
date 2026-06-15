@@ -17,8 +17,12 @@ export const chatCommand = defineCommand({
     description: "Interactive multi-turn chat REPL.",
   },
   args: {
-    pcc: { type: "boolean", description: "Route to Apple Private Cloud Compute." },
-    system: { type: "string", description: "Optional system prompt." },
+    model: {
+      type: "string",
+      description: "Model to use: 'system' (on-device, default) or 'pcc' (Private Cloud Compute).",
+      default: "system",
+    },
+    instructions: { type: "string", description: "Optional system instructions." },
     helper: { type: "string", description: "Override the afm-fm-helper binary path." },
   },
   async run({ args }) {
@@ -32,12 +36,13 @@ export const chatCommand = defineCommand({
     helper.start();
     const backend = UnifiedBackend.createHelper(helper);
 
-    const modelBackend = args.pcc ? ("privateCloudCompute" as const) : ("onDevice" as const);
-    const session = await Session.open(backend, modelBackend, args.system as string | undefined);
+    const modelBackend = args.model === "pcc" ? ("privateCloudCompute" as const) : ("onDevice" as const);
+    const session = await Session.open(backend, modelBackend, args.instructions as string | undefined);
 
     const rl = createInterface({ input, output });
+    const modelName = args.model === "pcc" ? "PCC" : "on-device";
     process.stdout.write(
-      `afm-js chat (${args.pcc ? "PCC" : "on-device"}). Ctrl-D to exit.\n`,
+      `afm-js chat (${modelName}). Ctrl-D to exit.\n`,
     );
 
     try {
