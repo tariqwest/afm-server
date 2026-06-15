@@ -18,8 +18,7 @@
     "format": "biome format --write .",
     "lint": "biome lint .",
     "check": "biome check .",
-    "release:prepare": "pnpm run build && pnpm run test",
-    "release": "node scripts/release.js",
+    "release": "pnpm run build && pnpm run test && node scripts/release.js",
     "ci": "pnpm run build && pnpm run test && pnpm run typecheck"
   },
   "devDependencies": {
