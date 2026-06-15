@@ -1,7 +1,7 @@
 {
   "name": "@afm-js/core",
-  "version": "0.0.3",
-  "description": "Pure, FoundationModels-free core for afm-js — OpenAI wire types, validators, error taxonomy, autostart plist generator.",
+  "version": "0.0.4",
+  "description": "Core of afm-js, provides an interface mirroring Apple's official apple/python-apple-fm-sdk.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
