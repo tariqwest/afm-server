@@ -81,7 +81,7 @@ describe("AfmError.openAIMessage", () => {
     const msg = AfmError.openAIMessage({ kind: "pccUnavailable", reason: "deviceNotEligible" });
     expect(msg).toContain("deviceNotEligible");
     expect(msg).toContain("macOS 27");
-    expect(msg).toContain("apple-foundationmodel");
+    expect(msg).toContain("system");
   });
 
   test("pccQuotaExceeded mentions retry guidance", () => {

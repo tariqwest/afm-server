@@ -4,7 +4,7 @@ import { ChatRequestValidator } from "../src/validators/ChatRequestValidator.js"
 
 function makeRequest(overrides: Partial<unknown> = {}): ChatCompletionRequest {
   return ChatCompletionRequest.parse({
-    model: "apple-foundationmodel",
+    model: "system",
     messages: [{ role: "user", content: "hi" }],
     ...(overrides as object),
   });
@@ -15,14 +15,14 @@ describe("ChatRequestValidator.validate", () => {
     expect(ChatRequestValidator.validate(makeRequest())).toBeNull();
   });
 
-  test("accepts the PCC canonical id and aliases", () => {
-    for (const model of ["apple-foundationmodel-pcc", "pcc", "apfel-pcc"]) {
+  test("accepts the PCC model id", () => {
+    for (const model of ["pcc"]) {
       expect(ChatRequestValidator.validate(makeRequest({ model }))).toBeNull();
     }
   });
 
   test("model check is case-insensitive and whitespace-trimmed", () => {
-    expect(ChatRequestValidator.validate(makeRequest({ model: "Apple-FoundationModel-PCC" }))).toBeNull();
+    expect(ChatRequestValidator.validate(makeRequest({ model: "PCC" }))).toBeNull();
     expect(ChatRequestValidator.validate(makeRequest({ model: "  pcc  " }))).toBeNull();
   });
 
@@ -33,7 +33,7 @@ describe("ChatRequestValidator.validate", () => {
       expect(f.kind).toBe("invalidModel");
       expect(ChatRequestValidator.message(f)).toContain("'gpt-4'");
       expect(ChatRequestValidator.message(f)).toContain("Available models");
-      expect(ChatRequestValidator.message(f)).toContain("apple-foundationmodel-pcc");
+      expect(ChatRequestValidator.message(f)).toContain("pcc");
     }
   });
 
@@ -92,11 +92,9 @@ describe("ChatRequestValidator.validate", () => {
     expect(f?.kind).toBe("imageContent");
   });
 
-  test("acceptedModelIDs is exhaustive for the PCC aliases", () => {
-    expect(ChatRequestValidator.acceptedModelIDs.has("apple-foundationmodel")).toBe(true);
-    expect(ChatRequestValidator.acceptedModelIDs.has("apple-foundationmodel-pcc")).toBe(true);
+  test("acceptedModelIDs includes system and pcc", () => {
+    expect(ChatRequestValidator.acceptedModelIDs.has("system")).toBe(true);
     expect(ChatRequestValidator.acceptedModelIDs.has("pcc")).toBe(true);
-    expect(ChatRequestValidator.acceptedModelIDs.has("apfel-pcc")).toBe(true);
   });
 });
 
@@ -104,9 +102,8 @@ describe("ChatRequestValidator.message / event", () => {
   test("invalidModel message lists both accepted ids and PCC aliases", () => {
     const msg = ChatRequestValidator.message({ kind: "invalidModel", model: "gpt-5" });
     expect(msg).toContain("'gpt-5'");
-    expect(msg).toContain("'apple-foundationmodel'");
-    expect(msg).toContain("'apple-foundationmodel-pcc'");
-    expect(msg).toContain("aliases: pcc, apfel-pcc");
+    expect(msg).toContain("'system'");
+    expect(msg).toContain("'pcc'");
   });
 
   test("event strings are stable for debug log scraping", () => {

@@ -9,7 +9,7 @@ import { dirname, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 import { defineCommand } from "citty";
-import { HelperProcess, Session } from "@afm-js/server";
+import { HelperProcess, Session, UnifiedBackend } from "@afm-js/server";
 
 interface BenchmarkRun {
   prompt: string;
@@ -67,8 +67,9 @@ export const benchmarkCommand = defineCommand({
     const iterations = args.iterations ? Math.max(1, Number(args.iterations)) : 1;
     const helper = new HelperProcess({ binaryPath: resolveHelperPath(args.helper as string | undefined) });
     helper.start();
+    const backend = UnifiedBackend.createHelper(helper);
 
-    const session = await Session.open(helper, "onDevice");
+    const session = await Session.open(backend, "onDevice");
     const runs: BenchmarkRun[] = [];
 
     if (!args.json) {
@@ -127,7 +128,7 @@ export const benchmarkCommand = defineCommand({
 
     const summary = summarise(runs);
     const report: BenchmarkReport = {
-      model: "apple-foundationmodel",
+      model: "system",
       iterations,
       runs,
       summary,

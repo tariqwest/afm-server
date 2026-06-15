@@ -72,7 +72,7 @@ node packages/afm-js/bin/afm-js.js serve --port 11434 --token sk-test --debug
 curl -X POST http://127.0.0.1:11434/v1/chat/completions \
   -H "Authorization: Bearer sk-test" \
   -H "Content-Type: application/json" \
-  -d '{"model":"apple-foundationmodel","messages":[{"role":"user","content":"Say hi."}]}'
+  -d '{"model":"system","messages":[{"role":"user","content":"Say hi."}]}'
 ```
 
 Streaming:
@@ -80,7 +80,7 @@ Streaming:
 ```bash
 curl -N -X POST http://127.0.0.1:11434/v1/chat/completions \
   -H "Authorization: Bearer sk-test" -H "Content-Type: application/json" \
-  -d '{"model":"apple-foundationmodel","stream":true,"messages":[{"role":"user","content":"Count to 5."}]}'
+  -d '{"model":"system","stream":true,"messages":[{"role":"user","content":"Count to 5."}]}'
 ```
 
 With a local MCP server (`--mcp` supports a colon-separated list of `<cmd> <arg…>` specs):
@@ -110,7 +110,7 @@ afm-js autostart --port 11434 --token sk-X # install per-user LaunchAgent
 curl -X POST http://127.0.0.1:11434/v1/chat/completions \
   -H "Authorization: Bearer sk-test" -H "Content-Type: application/json" \
   -d '{
-    "model": "apple-foundationmodel",
+    "model": "system",
     "response_format": {
       "type": "json_schema",
       "json_schema": {
@@ -152,8 +152,8 @@ from the logged-in user's GUI session.
 
 ## Models
 
-- `apple-foundationmodel` — on-device, 4096-token context, default.
-- `apple-foundationmodel-pcc` (or aliases `pcc`, `apfel-pcc`) — Apple Private Cloud Compute, 32K context, requires macOS 27+. Returns a typed 503 with a clear remediation message on ineligible hosts.
+- `system` — on-device, 4096-token context, default.
+- `pcc` — Apple Private Cloud Compute, 32K context, requires macOS 27+. Returns a typed 503 with a clear remediation message on ineligible hosts.
 
 ## Requirements
 

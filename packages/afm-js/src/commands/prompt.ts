@@ -8,7 +8,7 @@ import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineCommand } from "citty";
-import { HelperProcess, Session } from "@afm-js/server";
+import { HelperProcess, Session, UnifiedBackend } from "@afm-js/server";
 import { ModelBackend } from "@afm-js/core";
 
 export const promptCommand = defineCommand({
@@ -51,15 +51,16 @@ export const promptCommand = defineCommand({
 
     const helper = new HelperProcess({ binaryPath: resolveHelperPath(args.helper as string | undefined) });
     helper.start();
+    const backend = UnifiedBackend.createHelper(helper);
 
-    const backend = args.pcc ? ("privateCloudCompute" as const) : ("onDevice" as const);
-    const session = await Session.open(helper, backend, args.system as string | undefined);
+    const modelBackend = args.pcc ? ("privateCloudCompute" as const) : ("onDevice" as const);
+    const session = await Session.open(backend, modelBackend, args.system as string | undefined);
     try {
       const result = await session.respond(promptText);
       if (args.json) {
         process.stdout.write(
           `${JSON.stringify({
-            model: ModelBackend.canonicalModelID(backend),
+            model: ModelBackend.canonicalModelID(modelBackend),
             content: result.content,
             finish_reason: result.finishReason,
             usage: result.usage,

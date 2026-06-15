@@ -1,12 +1,14 @@
 // ============================================================================
 // server.ts — @hono/node-server bootstrap. Exposes startServer() so the
-// umbrella CLI can spin up the API on a chosen port/host with the helper
-// already wired in.
+// umbrella CLI can spin up the API on a chosen port/host with the backend
+// (fm CLI or helper) already wired in.
 // ============================================================================
 
 import { serve, type ServerType } from "@hono/node-server";
 import { createApp } from "./app.js";
 import { HelperProcess } from "./bridge/HelperProcess.js";
+import { selectBackend, type BackendSelectorOptions, type Backend } from "./bridge/BackendSelector.js";
+import { UnifiedBackend } from "./bridge/UnifiedBackend.js";
 import { McpStdioClient } from "./mcp/McpClient.js";
 
 export interface McpServerSpec {
@@ -17,8 +19,13 @@ export interface McpServerSpec {
 }
 
 export interface StartOptions {
-  /** Absolute path to the afm-fm-helper binary. */
-  helperBinaryPath: string;
+  /** 
+   * Absolute path to the afm-fm-helper binary. 
+   * If not provided, auto-detection is used (fm CLI preferred on macOS 27+).
+   */
+  helperBinaryPath?: string;
+  /** Backend selection options (auto-detect if not specified) */
+  backend?: BackendSelectorOptions;
   /** Bind port. Default 11434. */
   port?: number;
   /** Bind host. Default 127.0.0.1. */
@@ -32,20 +39,21 @@ export interface StartOptions {
 }
 
 export interface RunningServer {
-  /** Shut down the HTTP listener and the helper subprocess. */
+  /** Shut down the HTTP listener and the backend subprocess. */
   stop: () => Promise<void>;
 }
 
 export async function startServer(opts: StartOptions): Promise<RunningServer> {
   const debug = opts.debug ?? (() => {});
-  const helper = new HelperProcess({ binaryPath: opts.helperBinaryPath, debug });
-  helper.start();
-
+  
+  // Auto-detect or use specified backend
+  const backend = await createBackend(opts, debug);
+  
   const mcpClients: McpStdioClient[] = (opts.mcpServers ?? []).map(
     (s) => new McpStdioClient({ command: s.command, args: s.args, debug }),
   );
 
-  const app = createApp({ helper, token: opts.token, debug, mcpClients });
+  const app = createApp({ backend, token: opts.token, debug, mcpClients });
 
   const port = opts.port ?? 11434;
   const hostname = opts.host ?? "127.0.0.1";
@@ -54,13 +62,14 @@ export async function startServer(opts: StartOptions): Promise<RunningServer> {
     const server: ServerType = serve(
       { fetch: app.fetch, port, hostname },
       () => {
-        debug(`afm-js listening on http://${hostname}:${port}`);
+        const backendName = backend.getKind() === "fm" ? "fm CLI" : "helper";
+        debug(`afm-js listening on http://${hostname}:${port} (backend: ${backendName})`);
         resolve({
           stop: () =>
             new Promise<void>((res) => {
               server.close(async () => {
                 await Promise.allSettled(mcpClients.map((c) => c.shutdown()));
-                await helper.shutdown();
+                await backend.shutdown();
                 res();
               });
             }),
@@ -68,4 +77,44 @@ export async function startServer(opts: StartOptions): Promise<RunningServer> {
       },
     );
   });
+}
+
+async function createBackend(opts: StartOptions, debug: (msg: string) => void): Promise<UnifiedBackend> {
+  // If explicit helper path provided and no backend options specified, use helper directly
+  if (opts.helperBinaryPath && !opts.backend?.force) {
+    // Legacy path: use HelperProcess wrapped in UnifiedBackend
+    const helperProcess = new HelperProcess({ binaryPath: opts.helperBinaryPath, debug });
+    helperProcess.start();
+    return UnifiedBackend.createHelper(helperProcess, debug);
+  }
+
+  // Otherwise use auto-detection
+  const selectorOptions: BackendSelectorOptions = opts.backend ?? {};
+  
+  // If helper path specified, use it in selector
+  if (opts.helperBinaryPath) {
+    selectorOptions.helperPath = opts.helperBinaryPath;
+  }
+  
+  // Pass debug callback for helper process logging
+  selectorOptions.debug = debug;
+
+  debug("Auto-detecting backend (fm CLI preferred on macOS 27+)...");
+  const detected = await selectBackend(selectorOptions);
+  debug(`Detected backend: ${detected.kind}`);
+
+  if (detected.kind === "fm") {
+    const fm = detected.process;
+    const client = new (await import("@afm-js/core")).FmSocketClient(fm.socketPath);
+    await client.connect();
+    return new UnifiedBackend({
+      kind: "fm",
+      fmClient: client,
+      fmProcessManager: new (await import("@afm-js/core")).FmProcessManager(fm.socketPath),
+      debug,
+    });
+  } else {
+    // Helper backend - use the HelperProcess directly
+    return UnifiedBackend.createHelper(detected.helper, debug);
+  }
 }

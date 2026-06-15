@@ -7,6 +7,8 @@ export {
   type McpServerSpec,
 } from "./server.js";
 export { HelperProcess, type HelperRequest, type HelperReply } from "./bridge/HelperProcess.js";
+export { selectBackend, type BackendSelectorOptions, checkBackendAvailability } from "./bridge/BackendSelector.js";
+export { UnifiedBackend, type UnifiedBackendOptions, type BackendKind } from "./bridge/UnifiedBackend.js";
 export { Session, type SessionOptions, type SessionRespondResult } from "./session/Session.js";
 export { McpStdioClient } from "./mcp/McpClient.js";
 export { makeContext, type MakeSessionInput, type PreparedSession } from "./session/ContextManager.js";

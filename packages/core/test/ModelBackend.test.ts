@@ -7,10 +7,8 @@ describe("ModelBackend", () => {
   });
 
   test("canonical model ids", () => {
-    expect(ModelBackend.canonicalModelID("onDevice")).toBe("apple-foundationmodel");
-    expect(ModelBackend.canonicalModelID("privateCloudCompute")).toBe(
-      "apple-foundationmodel-pcc",
-    );
+    expect(ModelBackend.canonicalModelID("onDevice")).toBe("system");
+    expect(ModelBackend.canonicalModelID("privateCloudCompute")).toBe("pcc");
   });
 
   test("display labels", () => {
@@ -26,7 +24,7 @@ describe("ModelBackend", () => {
   });
 
   test("parse known on-device aliases", () => {
-    expect(ModelBackend.fromModelName("apple-foundationmodel")).toBe("onDevice");
+    expect(ModelBackend.fromModelName("system")).toBe("onDevice");
     expect(ModelBackend.fromModelName("Apfel")).toBe("onDevice");
   });
 
@@ -35,19 +33,17 @@ describe("ModelBackend", () => {
     expect(ModelBackend.fromModelName("claude-3-opus")).toBe("onDevice");
   });
 
-  test("parse PCC aliases", () => {
+  test("parse PCC", () => {
     expect(ModelBackend.fromModelName("pcc")).toBe("privateCloudCompute");
-    expect(ModelBackend.fromModelName("apfel-pcc")).toBe("privateCloudCompute");
-    expect(ModelBackend.fromModelName("apple-foundationmodel-pcc")).toBe("privateCloudCompute");
   });
 
   test("parse is case-insensitive", () => {
     expect(ModelBackend.fromModelName("PCC")).toBe("privateCloudCompute");
-    expect(ModelBackend.fromModelName("Apple-FoundationModel-PCC")).toBe("privateCloudCompute");
+    expect(ModelBackend.fromModelName("SYSTEM")).toBe("onDevice");
   });
 
   test("parse trims whitespace", () => {
     expect(ModelBackend.fromModelName("  pcc  ")).toBe("privateCloudCompute");
-    expect(ModelBackend.fromModelName("\tapple-foundationmodel\n")).toBe("onDevice");
+    expect(ModelBackend.fromModelName("\tsystem\n")).toBe("onDevice");
   });
 });

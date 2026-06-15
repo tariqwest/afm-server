@@ -157,7 +157,7 @@ export const AfmError = {
         return (
           `Apple Private Cloud Compute is not available on this device (${e.reason}). ` +
           "PCC requires macOS 27+, Apple Intelligence enabled, and an eligible device. " +
-          "Try the on-device model (`apple-foundationmodel`) instead."
+          "Try the on-device model (`system`) instead."
         );
       case "pccQuotaExceeded":
         return "Apple Private Cloud Compute quota for this Apple Account has been reached. Retry later or fall back to the on-device model.";

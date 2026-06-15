@@ -17,16 +17,16 @@ import {
   ToolResolution,
   type OpenAITool,
 } from "@afm-js/core";
-import type { HelperProcess } from "./bridge/HelperProcess.js";
 import type { McpStdioClient } from "./mcp/McpClient.js";
 import { makeContext } from "./session/ContextManager.js";
 import { Session } from "./session/Session.js";
+import type { UnifiedBackend } from "./bridge/UnifiedBackend.js";
 
 export interface AppConfig {
   /** Bearer token clients must present. Set to null/undefined to disable auth. */
   token?: string | null;
-  /** Helper-binary proxy used to fulfil chat completion requests. */
-  helper: HelperProcess;
+  /** Backend (fm CLI or helper) used to fulfill chat completion requests. */
+  backend: UnifiedBackend;
   /** Optional set of MCP servers whose tools are injected when the client sent none. */
   mcpClients?: McpStdioClient[];
   /** Debug log function. */
@@ -68,7 +68,7 @@ export function createApp(config: AppConfig): Hono {
   app.get("/health", (c) => {
     return c.json({
       status: "ok",
-      model: "apple-foundationmodel",
+      model: "system",
       version: "0.0.1",
     });
   });
@@ -89,7 +89,7 @@ export function createApp(config: AppConfig): Hono {
       object: "list",
       data: [
         {
-          id: "apple-foundationmodel",
+          id: "system",
           object: "model",
           created: 1719792000,
           owned_by: "apple",
@@ -103,7 +103,7 @@ export function createApp(config: AppConfig): Hono {
         // PCC entry advertised unconditionally; the helper returns the typed
         // pccUnavailable error at request time on ineligible hosts.
         {
-          id: "apple-foundationmodel-pcc",
+          id: "pcc",
           object: "model",
           created: 1749340800,
           owned_by: "apple",
@@ -113,7 +113,7 @@ export function createApp(config: AppConfig): Hono {
           notes:
             "Apple Private Cloud Compute via FoundationModels framework (macOS 27+). " +
             "32K context, no API keys. Opt in per request with " +
-            'model: "apple-foundationmodel-pcc" (aliases: pcc, apfel-pcc).',
+            'model: "pcc".'
         },
       ],
     });
@@ -205,7 +205,7 @@ export function createApp(config: AppConfig): Hono {
 
     let session: Session;
     try {
-      session = await Session.open(config.helper, backend, instructions);
+      session = await Session.open(config.backend, backend, instructions);
     } catch (err) {
       const classified = AfmError.reclassifyForBackend(AfmError.classify(err), backend);
       return c.json(

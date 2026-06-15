@@ -6,7 +6,7 @@
 // ============================================================================
 
 import { AfmError, type ModelBackend } from "@afm-js/core";
-import type { HelperProcess } from "../bridge/HelperProcess.js";
+import type { UnifiedBackend } from "../bridge/UnifiedBackend.js";
 
 export interface SessionOptions {
   temperature?: number;
@@ -22,7 +22,7 @@ export interface SessionRespondResult {
 
 export class Session {
   private constructor(
-    private readonly helper: HelperProcess,
+    private readonly backendClient: UnifiedBackend,
     public readonly id: string,
     public readonly backend: ModelBackend,
   ) {}
@@ -32,11 +32,11 @@ export class Session {
    * AfmError.pccUnavailable if PCC was asked for on an ineligible host.
    */
   static async open(
-    helper: HelperProcess,
+    backendClient: UnifiedBackend,
     backend: ModelBackend,
     instructions?: string,
   ): Promise<Session> {
-    const reply = await helper.call({
+    const reply = await backendClient.call({
       op: "openSession",
       backend: backend === "onDevice" ? "on_device" : "pcc",
       instructions,
@@ -44,14 +44,14 @@ export class Session {
     if (!("session" in reply) || typeof reply.session !== "string") {
       throw AfmError.classify({
         kind: "unknown",
-        message: "helper did not return a session id",
+        message: "backend did not return a session id",
       });
     }
-    return new Session(helper, reply.session, backend);
+    return new Session(backendClient, reply.session, backend);
   }
 
   async respond(prompt: string, options?: SessionOptions): Promise<SessionRespondResult> {
-    const reply = await this.helper.call({
+    const reply = await this.backendClient.call({
       op: "respond",
       session: this.id,
       prompt,
@@ -80,7 +80,7 @@ export class Session {
     options?: SessionOptions,
     signal?: AbortSignal,
   ): AsyncGenerator<StreamEvent, void, void> {
-    const frames = this.helper.streamRequest(
+    const frames = this.backendClient.streamRequest(
       {
         op: "stream",
         session: this.id,
@@ -109,7 +109,7 @@ export class Session {
 
   async close(): Promise<void> {
     try {
-      await this.helper.call({ op: "closeSession", session: this.id });
+      await this.backendClient.call({ op: "closeSession", session: this.id });
     } catch {
       // Best-effort: a failed close is non-fatal.
     }

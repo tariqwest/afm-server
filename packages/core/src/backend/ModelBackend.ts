@@ -11,7 +11,7 @@ export const ModelBackend = {
   default: "onDevice" as ModelBackend,
 
   canonicalModelID(b: ModelBackend): string {
-    return b === "onDevice" ? "apple-foundationmodel" : "apple-foundationmodel-pcc";
+    return b === "onDevice" ? "system" : "pcc";
   },
 
   displayLabel(b: ModelBackend): string {
@@ -31,8 +31,6 @@ export const ModelBackend = {
     if (raw === "") return "onDevice";
     switch (raw) {
       case "pcc":
-      case "apfel-pcc":
-      case "apple-foundationmodel-pcc":
         return "privateCloudCompute";
       default:
         return "onDevice";

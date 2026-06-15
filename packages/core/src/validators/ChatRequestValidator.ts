@@ -26,7 +26,7 @@ export const ChatRequestValidator = {
    * Canonical on-device model name. Kept as a single constant for downstream
    * consumers; route decisions go through `ModelBackend.fromModelName`.
    */
-  validModel: "apple-foundationmodel" as const,
+  validModel: "system" as const,
 
   /**
    * The set of model ids this server accepts on `/v1/chat/completions`.
@@ -35,10 +35,8 @@ export const ChatRequestValidator = {
    * trimming whitespace.
    */
   acceptedModelIDs: new Set<string>([
-    "apple-foundationmodel",
-    "apple-foundationmodel-pcc",
+    "system",
     "pcc",
-    "apfel-pcc",
   ]),
 
   validate(request: ChatCompletionRequest): ChatRequestValidationFailure | null {
@@ -94,8 +92,8 @@ export const ChatRequestValidator = {
       case "invalidModel":
         return (
           `The model '${f.model}' does not exist. Available models: ` +
-          "'apple-foundationmodel' (on-device), " +
-          "'apple-foundationmodel-pcc' (Private Cloud Compute; aliases: pcc, apfel-pcc)."
+          "'system' (on-device), " +
+          "'pcc' (Private Cloud Compute)."
         );
     }
   },

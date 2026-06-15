@@ -9,7 +9,7 @@ import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { fileURLToPath } from "node:url";
 import { defineCommand } from "citty";
-import { HelperProcess, Session } from "@afm-js/server";
+import { HelperProcess, Session, UnifiedBackend } from "@afm-js/server";
 
 export const chatCommand = defineCommand({
   meta: {
@@ -30,9 +30,10 @@ export const chatCommand = defineCommand({
       binaryPath: resolveHelperPath(args.helper as string | undefined),
     });
     helper.start();
+    const backend = UnifiedBackend.createHelper(helper);
 
-    const backend = args.pcc ? ("privateCloudCompute" as const) : ("onDevice" as const);
-    const session = await Session.open(helper, backend, args.system as string | undefined);
+    const modelBackend = args.pcc ? ("privateCloudCompute" as const) : ("onDevice" as const);
+    const session = await Session.open(backend, modelBackend, args.system as string | undefined);
 
     const rl = createInterface({ input, output });
     process.stdout.write(
