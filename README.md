@@ -4,7 +4,7 @@ Apple Foundation Models for Node.js. OpenAI-compatible HTTP server and CLI for A
 
 A TypeScript / Node.js port of [apfel-plus](https://github.com/tariqwest/apfel-plus) (Swift). Same OpenAI wire format, same `/v1/chat/completions`, `/v1/models`, `/health`, same `--pcc` opt-in to Apple Private Cloud Compute. Reaches the on-device `SystemLanguageModel` (and, on macOS 27+, `PrivateCloudComputeLanguageModel`) via a small Swift helper binary spoken to over newline-JSON.
 
-> **Status:** M3 — feature complete for the OpenAI surface. On top of M2 (streaming, multi-turn, tool calling, MCP stdio), M3 adds structured outputs (`response_format: json_object` and `json_schema`), the `autostart` LaunchAgent installer (with `KeepAlive` auto-restart), and the `benchmark` command. Install via Homebrew for prebuilt binaries, or build from source with `pnpm install && (cd helper && swift build -c release)`.
+> **Status:** M3 — feature complete for the OpenAI surface. On top of M2 (streaming, multi-turn, tool calling, MCP stdio), M3 adds structured outputs (`response_format: json_object` and `json_schema`), LaunchAgent auto-start via Homebrew services, and the `benchmark` command. Install via Homebrew for prebuilt binaries, or build from source with `pnpm install && (cd helper && swift build -c release)`.
 
 ## Architecture
 
@@ -144,7 +144,6 @@ afm-js chat --system "Be brief."         # …with a system prompt
 afm-js prompt --pcc "..."                # route to Private Cloud Compute
 afm-js benchmark                          # ttft + tokens/s over 3 fixed prompts
 afm-js benchmark --json                   # machine-readable report
-afm-js autostart --port 11434 --token sk-X # install per-user LaunchAgent
 ```
 
 ## Structured outputs
@@ -174,21 +173,27 @@ M3 implements this via prompt-engineered schema injection plus
 `JSONFenceStripper` post-processing. A future M4 will switch to the
 helper's native `GenerationSchema`-guided generation for hard guarantees.
 
-## Autostart (LaunchAgent)
+## Homebrew Services (LaunchAgent)
+
+When installed via Homebrew, afm-js can run as a background service that auto-starts at login:
 
 ```bash
-afm-js autostart --port 11434 --token sk-mine
-# wrote ~/Library/LaunchAgents/com.afm-js.serve.plist
-# bootstrap ok — gui/501/com.afm-js.serve
+# Start the service (starts now and at login)
+brew services start afm-js
+
+# Check service status
+brew services info afm-js
+
+# Restart the service
+brew services restart afm-js
+
+# Stop the service
+brew services stop afm-js
 ```
 
-Logs land at `~/Library/Logs/afm-js.{out,err}.log`. Manage with:
-
-```bash
-launchctl print     gui/$(id -u)/com.afm-js.serve
-launchctl kickstart -k gui/$(id -u)/com.afm-js.serve   # restart
-launchctl bootout   gui/$(id -u)/com.afm-js.serve     # stop & remove
-```
+The service runs on port 11434 by default. Logs are stored at:
+- `/opt/homebrew/var/log/afm-js.log` (stdout)
+- `/opt/homebrew/var/log/afm-js-error.log` (stderr)
 
 A LaunchAgent (not Daemon) because Apple Intelligence is only reachable
 from the logged-in user's GUI session.

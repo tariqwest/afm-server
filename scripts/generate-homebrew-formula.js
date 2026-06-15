@@ -115,12 +115,26 @@ function generateFormula(version, sha256, helperSha256) {
         - Apple Silicon (M1+)
         - Apple Intelligence enabled in System Settings
 
-      To start the server:
+      To start the server manually:
         afm-js serve --port 11434
 
-      For autostart with LaunchAgent:
-        afm-js autostart --port 11434 --token sk-mine
+      To run as a background service (auto-starts at login):
+        brew services start afm-js
+
+      Manage the service:
+        brew services stop afm-js
+        brew services restart afm-js
+        brew services info afm-js
     EOS
+  end
+
+  service do
+    run [opt_bin/"afm-js", "serve", "--port", "11434"]
+    keep_alive true
+    log_path var/"log/afm-js.log"
+    error_log_path var/"log/afm-js-error.log"
+    environment_variables AFM_JS_HELPER_PATH: opt_prefix/"libexec/afm-fm-helper"
+    require_root false
   end
 
   test do

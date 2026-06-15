@@ -84,6 +84,11 @@ afm-js follows semantic versioning: `MAJOR.MINOR.PATCH`
    brew tap tariqwest/tap
    brew install afm-js
    afm-js serve --port 11434
+   
+   # Test brew services
+   brew services start afm-js
+   brew services info afm-js
+   brew services stop afm-js
    ```
 
 ## Available Scripts
