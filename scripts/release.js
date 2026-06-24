@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ============================================================================
-// release.js — Complete release workflow for afm-js
+// release.js — Complete release workflow for afm-server
 //
 // Usage:
 //   node scripts/release.js [version]
@@ -18,22 +18,19 @@ import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import dotenv from "dotenv";
 
-// Load environment variables from .env file if it exists
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const ROOT_DIR = dirname(__dirname);
 
-// Parse arguments
 const versionArg = process.argv[2];
-const currentVersion = JSON.parse(readFileSync(join(ROOT_DIR, "packages/afm-js/package.json"), "utf-8")).version;
+const currentVersion = JSON.parse(readFileSync(join(ROOT_DIR, "package.json"), "utf-8")).version;
 const VERSION = process.env.RELEASE_VERSION || versionArg || currentVersion;
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const DRY_RUN = process.env.RELEASE_DRY_RUN === "true";
-const REPO = "tariqwest/afm-js";
+const REPO = "tariqwest/afm-server";
 
-// Colors for output
 const colors = {
   reset: "\x1b[0m",
   green: "\x1b[32m",
@@ -69,7 +66,7 @@ function exec(command, options = {}) {
 function execSilent(command, options = {}) {
   try {
     return execSync(command, { encoding: "utf-8", stdio: "pipe", ...options });
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -81,12 +78,12 @@ function calculateSha256(filePath) {
   return hash.digest("hex");
 }
 
-function generateFormula(version, sha256, helperSha256) {
-  const url = `https://github.com/tariqwest/afm-js/releases/download/v${version}/afm-js-prebuilt-arm64-apple-darwin-${version}.tar.gz`;
+function generateFormula(version, sha256) {
+  const url = `https://github.com/tariqwest/afm-server/releases/download/v${version}/afm-server-prebuilt-arm64-apple-darwin-${version}.tar.gz`;
 
-  return `class AfmJs < Formula
+  return `class AfmServer < Formula
   desc "Apple Foundation Models for Node.js — OpenAI-compatible HTTP server + CLI"
-  homepage "https://github.com/tariqwest/afm-js"
+  homepage "https://github.com/tariqwest/afm-server"
   url "${url}"
   sha256 "${sha256}"
   license "MIT"
@@ -97,87 +94,65 @@ function generateFormula(version, sha256, helperSha256) {
     depends_on arch: :arm64
   end
 
-  resource "afm-fm-helper" do
-    url "https://github.com/tariqwest/afm-js/releases/download/v${version}/afm-fm-helper-arm64-apple-darwin-${version}.tar.gz"
-    sha256 "${helperSha256}"
-  end
-
   def install
-    # Install prebuilt afm-js package (dist, bin, and bundled node_modules)
     libexec.install "dist", "bin", "node_modules"
 
-    # Create wrapper script that uses Homebrew's node
-    (bin/"afm-js").write <<~EOS
+    (bin/"afm-server").write <<~EOS
       #!/bin/bash
-      export AFM_HELPER_PATH="#{opt_prefix}/libexec/afm-fm-helper"
-      export AFM_JS_HELPER_PATH="#{opt_prefix}/libexec/afm-fm-helper"
-      exec "#{Formula["node"].opt_bin}/node" "#{libexec}/bin/afm-js.js" "$@"
+      exec "#{Formula["node"].opt_bin}/node" "#{libexec}/bin/afm-server.js" "$@"
     EOS
-    chmod 0755, bin/"afm-js"
-
-    # Install helper binary from resource
-    resource("afm-fm-helper").stage do
-      libexec.install "afm-fm-helper"
-    end
-    chmod 0755, libexec/"afm-fm-helper"
+    chmod 0755, bin/"afm-server"
   end
 
   service do
-    run [opt_bin/"afm-js", "serve"]
+    run [opt_bin/"afm-server", "serve"]
     keep_alive true
-    log_path var/"log/afm-js.log"
-    error_log_path var/"log/afm-js-error.log"
-    environment_variables AFM_HELPER_PATH: opt_prefix/"libexec/afm-fm-helper",
-                          AFM_JS_HELPER_PATH: opt_prefix/"libexec/afm-fm-helper",
-                          AFM_JS_PORT: "1337",
-                          AFM_JS_TOKEN: "*************"
+    log_path var/"log/afm-server.log"
+    error_log_path var/"log/afm-server-error.log"
+    environment_variables AFM_SERVER_PORT: "1337",
+                          AFM_SERVER_TOKEN: "*************"
     require_root false
   end
 
   def caveats
     <<~EOS
-      afm-js requires:
+      afm-server requires:
         - macOS 26 (Tahoe) or later
         - Apple Silicon (M1+)
         - Apple Intelligence enabled in System Settings
 
       To start the server manually:
-        afm-js serve --port 1337
+        afm-server serve --port 1337
 
       The service runs with default port 1337 and token *************.
       To configure the service with custom port or token:
-        brew services set-env afm-js AFM_JS_PORT 8080
-        brew services set-env afm-js AFM_JS_TOKEN your-secret-token
-        brew services restart afm-js
+        brew services set-env afm-server AFM_SERVER_PORT 8080
+        brew services set-env afm-server AFM_SERVER_TOKEN your-secret-token
+        brew services restart afm-server
 
       To run as a background service (auto-starts at login):
-        brew services start afm-js
+        brew services start afm-server
 
       Manage the service:
-        brew services stop afm-js
-        brew services restart afm-js
-        brew services info afm-js
+        brew services stop afm-server
+        brew services restart afm-server
+        brew services info afm-server
     EOS
   end
 
   test do
-    # Test that the binary runs
-    assert_match "afm-js", shell_output("#{bin}/afm-js --help")
-    
-    # Test health endpoint if server can start briefly
-    # Note: This may fail if Apple Intelligence is not available
+    assert_match "afm-server", shell_output("#{bin}/afm-server --help")
   end
 end
 `;
 }
 
-// GitHub API helpers
 async function githubRequest(endpoint, options = {}) {
   const url = `https://api.github.com/repos/${REPO}${endpoint}`;
   const headers = {
-    "Authorization": `Bearer ${GITHUB_TOKEN}`,
-    "Accept": "application/vnd.github.v3+json",
-    "User-Agent": "afm-js-release-script",
+    Authorization: `Bearer ${GITHUB_TOKEN}`,
+    Accept: "application/vnd.github.v3+json",
+    "User-Agent": "afm-server-release-script",
     ...options.headers,
   };
 
@@ -198,10 +173,12 @@ async function githubRequest(endpoint, options = {}) {
 
 async function createRelease(tag, name, body) {
   logStep(`Creating GitHub release for ${tag}...`);
-  
+
   if (DRY_RUN) {
     logWarn("DRY RUN: Skipping release creation");
-    return { upload_url: "https://uploads.github.com/repos/tariqwest/afm-js/releases/123/assets{?name}" };
+    return {
+      upload_url: "https://uploads.github.com/repos/tariqwest/afm-server/releases/123/assets{?name}",
+    };
   }
 
   try {
@@ -210,16 +187,13 @@ async function createRelease(tag, name, body) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         tag_name: tag,
-        name: name,
-        body: body,
+        name,
+        body,
         draft: false,
         prerelease: false,
       }),
     });
   } catch (error) {
-    // If the release already exists (e.g. from a previous failed run),
-    // reuse it and clean up any partially-uploaded assets so re-uploads
-    // don't 422 with "already_exists".
     if (/already_exists|already exists/i.test(error.message)) {
       logWarn(`Release ${tag} already exists, reusing existing release...`);
       const existing = await githubRequest(`/releases/tags/${tag}`);
@@ -238,13 +212,16 @@ async function createRelease(tag, name, body) {
 async function uploadAsset(release, filePath, contentType) {
   const fileName = basename(filePath);
   logStep(`Uploading ${fileName} to GitHub release...`);
-  
+
   if (DRY_RUN) {
     logWarn(`DRY RUN: Skipping upload of ${fileName}`);
-    return { browser_download_url: `https://github.com/${REPO}/releases/download/v${VERSION}/${fileName}` };
+    return {
+      browser_download_url: `https://github.com/${REPO}/releases/download/v${VERSION}/${fileName}`,
+    };
   }
 
-  const uploadUrl = release.upload_url.replace(/\{\?[^}]*\}$/, "") + `?name=${encodeURIComponent(fileName)}`;
+  const uploadUrl =
+    release.upload_url.replace(/\{\?[^}]*\}$/, "") + `?name=${encodeURIComponent(fileName)}`;
   const fileStream = createReadStream(filePath);
   const fileBuffer = await new Promise((resolve, reject) => {
     const chunks = [];
@@ -256,7 +233,7 @@ async function uploadAsset(release, filePath, contentType) {
   const response = await fetch(uploadUrl, {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${GITHUB_TOKEN}`,
+      Authorization: `Bearer ${GITHUB_TOKEN}`,
       "Content-Type": contentType,
       "Content-Length": fileBuffer.length,
     },
@@ -273,16 +250,15 @@ async function uploadAsset(release, filePath, contentType) {
 
 async function publishToTap(version, formulaContent) {
   const TAP_REPO = process.env.TAP_REPO || "tariqwest/homebrew-tap";
-  const TAP_DIR = process.env.TAP_DIR || join(process.env.HOME || "", ".cache/afm-js-tap");
-  
+  const TAP_DIR = process.env.TAP_DIR || join(process.env.HOME || "", ".cache/afm-server-tap");
+
   logStep(`Publishing formula to ${TAP_REPO}...`);
-  
+
   if (DRY_RUN) {
     logWarn("DRY RUN: Skipping tap publishing");
     return;
   }
 
-  // Clone or update the tap repository
   if (existsSync(join(TAP_DIR, ".git"))) {
     logInfo(`Updating existing tap repo at ${TAP_DIR}...`);
     exec("git fetch origin", { cwd: TAP_DIR });
@@ -297,29 +273,25 @@ async function publishToTap(version, formulaContent) {
     exec(`git clone "${cloneUrl}" "${TAP_DIR}"`);
   }
 
-  // Create Formula directory if needed
   const formulaDir = join(TAP_DIR, "Formula");
   if (!existsSync(formulaDir)) {
     mkdirSync(formulaDir, { recursive: true });
   }
 
-  // Write the formula
-  const formulaPath = join(formulaDir, "afm-js.rb");
+  const formulaPath = join(formulaDir, "afm-server.rb");
   writeFileSync(formulaPath, formulaContent);
 
-  // Check if there are changes
   try {
-    exec('git diff --quiet HEAD -- "Formula/afm-js.rb"', { cwd: TAP_DIR });
+    exec('git diff --quiet HEAD -- "Formula/afm-server.rb"', { cwd: TAP_DIR });
     logWarn("No changes detected in formula. Already up to date?");
     return;
   } catch {
     // Changes detected, continue
   }
 
-  // Commit and push
   logInfo("Committing changes...");
-  exec('git add "Formula/afm-js.rb"', { cwd: TAP_DIR });
-  exec(`git commit -m "afm-js ${version}"`, { cwd: TAP_DIR });
+  exec('git add "Formula/afm-server.rb"', { cwd: TAP_DIR });
+  exec(`git commit -m "afm-server ${version}"`, { cwd: TAP_DIR });
 
   logInfo(`Pushing to ${TAP_REPO}...`);
   const pushUrl = GITHUB_TOKEN
@@ -336,11 +308,11 @@ async function publishToTap(version, formulaContent) {
     }
   }
 
-  logInfo(`Successfully published afm-js ${version} to ${TAP_REPO}!`);
+  logInfo(`Successfully published afm-server ${version} to ${TAP_REPO}!`);
 }
 
 async function main() {
-  logInfo(`Starting release process for afm-js v${VERSION}...`);
+  logInfo(`Starting release process for afm-server v${VERSION}...`);
 
   if (!GITHUB_TOKEN) {
     logError("GITHUB_TOKEN environment variable is required");
@@ -351,16 +323,14 @@ async function main() {
     logWarn("DRY RUN mode enabled - no actual changes will be made");
   }
 
-  // Version comparison to prevent downgrades
   if (VERSION === currentVersion) {
     logError(`Release version ${VERSION} is the same as current version in package.json`);
     logError("Update RELEASE_VERSION env variable to a higher version number");
     process.exit(1);
   }
 
-  // Simple version comparison (assumes semantic versioning)
-  const currentParts = currentVersion.split('.').map(Number);
-  const releaseParts = VERSION.split('.').map(Number);
+  const currentParts = currentVersion.split(".").map(Number);
+  const releaseParts = VERSION.split(".").map(Number);
 
   for (let i = 0; i < 3; i++) {
     if (releaseParts[i] < currentParts[i]) {
@@ -373,22 +343,13 @@ async function main() {
     }
   }
 
-  // Update all package.json files to the release version
-  const packageFiles = [
-    join(ROOT_DIR, "package.json"),
-    join(ROOT_DIR, "packages/afm-js/package.json"),
-    join(ROOT_DIR, "packages/core/package.json"),
-    join(ROOT_DIR, "packages/cli/package.json"),
-    join(ROOT_DIR, "packages/server/package.json"),
-  ];
+  const packageFiles = [join(ROOT_DIR, "package.json")];
 
-  // Save original package.json content for rollback
   const originalPackageContents = new Map();
   for (const pkgFile of packageFiles) {
     originalPackageContents.set(pkgFile, readFileSync(pkgFile, "utf-8"));
   }
 
-  // Rollback function to restore original package.json files
   const rollbackPackageVersions = () => {
     logWarn("Rolling back package.json version changes...");
     for (const [pkgFile, originalContent] of originalPackageContents) {
@@ -397,13 +358,11 @@ async function main() {
     }
   };
 
-  // Create temporary directory for artifacts (outside try for cleanup access)
   let tempDir = join(ROOT_DIR, ".release-temp");
 
   try {
     if (!DRY_RUN) {
       logStep(`Updating all package.json files to version ${VERSION}...`);
-
       for (const pkgFile of packageFiles) {
         const pkg = JSON.parse(readFileSync(pkgFile, "utf-8"));
         pkg.version = VERSION;
@@ -414,20 +373,18 @@ async function main() {
       logWarn("DRY RUN: Skipping package.json version updates");
     }
 
-    // Detect if running in CI environment
     const isCI = process.env.CI === "true";
     if (isCI) {
       logInfo("Running in CI environment - skipping build/test (handled by workflow)");
     }
 
-    // Setup temporary directory
     if (existsSync(tempDir)) {
       rmSync(tempDir, { recursive: true, force: true });
     }
     mkdirSync(tempDir, { recursive: true });
-    // Step 1: Build the project (skip in CI)
+
     if (!isCI) {
-      logStep("Building afm-js package...");
+      logStep("Building afm-server package...");
       if (!DRY_RUN) {
         exec("pnpm run build", { cwd: ROOT_DIR });
       } else {
@@ -435,66 +392,35 @@ async function main() {
       }
     }
 
-    // Step 2: Build the Swift helper (skip in CI)
-    if (!isCI) {
-      logStep("Building afm-fm-helper binary...");
-      if (!DRY_RUN) {
-        exec("swift build -c release", { cwd: join(ROOT_DIR, "helper") });
-      } else {
-        logWarn("DRY RUN: Skipping Swift build");
-      }
-    }
-
-    // Step 3: Create afm-js tarball
-    logStep("Creating afm-js prebuilt tarball...");
-    const afmJsTarball = join(tempDir, `afm-js-prebuilt-arm64-apple-darwin-${VERSION}.tar.gz`);
+    logStep("Creating afm-server prebuilt tarball...");
+    const afmServerTarball = join(
+      tempDir,
+      `afm-server-prebuilt-arm64-apple-darwin-${VERSION}.tar.gz`,
+    );
     if (!DRY_RUN) {
-      const deployDir = join(tempDir, "afm-js-deploy");
+      const deployDir = join(tempDir, "afm-server-deploy");
       logStep("Bundling dependencies via pnpm deploy...");
-      exec(
-        `pnpm --filter=afm-js deploy --prod "${deployDir}"`,
-        { cwd: ROOT_DIR }
-      );
-      exec(
-        `tar -czf "${afmJsTarball}" -C "${deployDir}" dist bin node_modules`,
-        { cwd: ROOT_DIR }
-      );
+      exec(`pnpm deploy --prod "${deployDir}"`, { cwd: ROOT_DIR });
+      exec(`tar -czf "${afmServerTarball}" -C "${deployDir}" dist bin node_modules`, {
+        cwd: ROOT_DIR,
+      });
     } else {
       logWarn("DRY RUN: Skipping tarball creation");
-      // Create dummy file for testing
-      writeFileSync(afmJsTarball, "dummy");
+      writeFileSync(afmServerTarball, "dummy");
     }
 
-    // Step 4: Create helper tarball
-    logStep("Creating afm-fm-helper tarball...");
-    const helperTarball = join(tempDir, `afm-fm-helper-arm64-apple-darwin-${VERSION}.tar.gz`);
-    if (!DRY_RUN) {
-      exec(
-        `tar -czf "${helperTarball}" -C helper/.build/release afm-fm-helper`,
-        { cwd: ROOT_DIR }
-      );
-    } else {
-      logWarn("DRY RUN: Skipping helper tarball creation");
-      // Create dummy file for testing
-      writeFileSync(helperTarball, "dummy");
-    }
+    logStep("Calculating SHA256 hash...");
+    const afmServerSha256 = calculateSha256(afmServerTarball);
+    logInfo(`afm-server SHA256: ${afmServerSha256}`);
 
-    // Step 5: Calculate SHA256 hashes
-    logStep("Calculating SHA256 hashes...");
-    const afmJsSha256 = calculateSha256(afmJsTarball);
-    const helperSha256 = calculateSha256(helperTarball);
-    logInfo(`afm-js SHA256: ${afmJsSha256}`);
-    logInfo(`helper SHA256: ${helperSha256}`);
-
-    // Step 6: Create GitHub release
     const tagName = `v${VERSION}`;
-    const releaseName = `afm-js ${VERSION}`;
-    const releaseBody = `afm-js ${VERSION}
+    const releaseName = `afm-server ${VERSION}`;
+    const releaseBody = `afm-server ${VERSION}
 
 ## Installation
 
 \`\`\`bash
-brew install tariqwest/tap/afm-js
+brew install tariqwest/tap/afm-server
 \`\`\`
 
 ## What's Changed
@@ -503,8 +429,7 @@ See the [CHANGELOG](https://github.com/${REPO}/blob/main/CHANGELOG.md) for detai
 
 ## Artifacts
 
-- \`afm-js-prebuilt-arm64-apple-darwin-${VERSION}.tar.gz\` - Prebuilt Node.js package
-- \`afm-fm-helper-arm64-apple-darwin-${VERSION}.tar.gz\` - Swift helper binary
+- \`afm-server-prebuilt-arm64-apple-darwin-${VERSION}.tar.gz\` - Prebuilt Node.js package with apple-fm-sdk
 
 ## Requirements
 
@@ -516,38 +441,27 @@ See the [CHANGELOG](https://github.com/${REPO}/blob/main/CHANGELOG.md) for detai
     const release = await createRelease(tagName, releaseName, releaseBody);
     logInfo(`Release created: ${release.html_url}`);
 
-    // Step 7: Upload artifacts
-    const afmJsAsset = await uploadAsset(release, afmJsTarball, "application/gzip");
-    const helperAsset = await uploadAsset(release, helperTarball, "application/gzip");
-    
-    logInfo(`afm-js artifact: ${afmJsAsset.browser_download_url}`);
-    logInfo(`helper artifact: ${helperAsset.browser_download_url}`);
+    const afmServerAsset = await uploadAsset(release, afmServerTarball, "application/gzip");
+    logInfo(`afm-server artifact: ${afmServerAsset.browser_download_url}`);
 
-    // Step 8: Generate Homebrew formula with SHA256 hashes
     logStep("Generating Homebrew formula...");
-    const formulaContent = generateFormula(VERSION, afmJsSha256, helperSha256);
-
-    // Step 9: Publish to tap
+    const formulaContent = generateFormula(VERSION, afmServerSha256);
     await publishToTap(VERSION, formulaContent);
 
     logInfo(`Release ${VERSION} completed successfully!`);
     console.log("");
     console.log("Release artifacts:");
-    console.log(`  - ${afmJsAsset.browser_download_url}`);
-    console.log(`  - ${helperAsset.browser_download_url}`);
+    console.log(`  - ${afmServerAsset.browser_download_url}`);
     console.log("");
     console.log("Homebrew formula updated and published to tap.");
     console.log("Users can install via:");
-    console.log("  brew install tariqwest/tap/afm-js");
-
+    console.log("  brew install tariqwest/tap/afm-server");
   } catch (error) {
-    // Rollback package.json changes on failure
     if (!DRY_RUN) {
       rollbackPackageVersions();
     }
     throw error;
   } finally {
-    // Cleanup temporary directory
     if (existsSync(tempDir)) {
       logStep("Cleaning up temporary directory...");
       rmSync(tempDir, { recursive: true, force: true });

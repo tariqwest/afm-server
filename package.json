@@ -1,26 +1,56 @@
 {
-  "name": "afm-js-monorepo",
+  "name": "afm-server",
   "version": "0.0.10",
-  "private": true,
-  "type": "module",
-  "description": "Apple Foundation Models for Node.js / TypeScript — OpenAI-compatible HTTP server + CLI",
+  "description": "Apple Foundation Models for Node.js — OpenAI-compatible HTTP server and CLI for Apple Intelligence.",
   "license": "MIT",
   "author": "Tariq West",
+  "type": "module",
+  "main": "./dist/server/index.js",
+  "types": "./dist/server/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/server/index.d.ts",
+      "default": "./dist/server/index.js"
+    }
+  },
+  "bin": {
+    "afm-server": "./bin/afm-server.js"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "README.md"
+  ],
   "engines": {
     "node": ">=20"
   },
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64"
+  ],
   "scripts": {
-    "build": "pnpm -r --filter=./packages/* build",
+    "build": "tsc --build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "vitest run packages/afm-js/test/e2e",
+    "test:e2e": "vitest run test/e2e",
     "typecheck": "tsc --build",
-    "clean": "tsc --build --clean && rm -rf packages/*/dist",
+    "clean": "tsc --build --clean && rm -rf dist",
     "format": "biome format --write .",
     "lint": "biome lint .",
     "check": "biome check .",
     "release": "node scripts/release.js",
     "ci": "pnpm run build && pnpm run test && pnpm run typecheck"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.7",
+    "@hono/zod-validator": "^0.4.2",
+    "apple-fm-sdk": "link:../ts-apple-fm-sdk",
+    "citty": "^0.1.6",
+    "hono": "^4.6.14",
+    "pino": "^9.5.0",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

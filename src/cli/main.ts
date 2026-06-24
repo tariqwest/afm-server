@@ -1,0 +1,33 @@
+// ============================================================================
+// main.ts — Entry point for the afm-server binary. Defines the top-level CLI
+// surface via citty subcommands.
+// ============================================================================
+
+import { defineCommand, runMain } from "citty";
+import { availableCommand } from "./commands/available.js";
+import { chatCommand } from "./commands/chat.js";
+
+import { respondCommand } from "./commands/respond.js";
+import { schemaCommand } from "./commands/schema.js";
+import { serveCommand } from "./commands/serve.js";
+import { tokenCountCommand } from "./commands/token-count.js";
+
+const main = defineCommand({
+  meta: {
+    name: "afm-server",
+    version: "0.0.10",
+    description:
+      "Apple Foundation Models for Node.js. OpenAI-compatible HTTP server + CLI for Apple Intelligence.",
+  },
+  subCommands: {
+    serve: serveCommand,
+    respond: respondCommand,
+    chat: chatCommand,
+    "token-count": tokenCountCommand,
+    schema: schemaCommand,
+    available: availableCommand,
+
+  },
+});
+
+runMain(main);
