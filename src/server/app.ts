@@ -5,18 +5,19 @@
 
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import { AfmError } from "./errors/AfmError.js";
-import { FinishReason, FinishReasonResolver } from "./chat/FinishReasonResolver.js";
-import { JSONFenceStripper } from "./tools/JSONFenceStripper.js";
 import { ModelBackend } from "./backend/ModelBackend.js";
-import { ToolCallHandler } from "./tools/ToolCallHandler.js";
+import { FinishReason, FinishReasonResolver } from "./chat/FinishReasonResolver.js";
 import { ToolResolution } from "./chat/ToolResolution.js";
-import { InferenceService } from "./sdk/InferenceService.js";
-import { ChatCompletionRequest, type OpenAITool } from "./openai/index.js";
-import { ChatRequestValidator } from "./validators/ChatRequestValidator.js";
+import { AfmError } from "./errors/AfmError.js";
 import type { McpStdioClient } from "./mcp/McpClient.js";
+import { ChatCompletionRequest, type OpenAITool } from "./openai/index.js";
+import type { InferenceService } from "./sdk/InferenceService.js";
 import { makeContext } from "./session/ContextManager.js";
 import { Session } from "./session/Session.js";
+import { JSONFenceStripper } from "./tools/JSONFenceStripper.js";
+import { ToolCallHandler } from "./tools/ToolCallHandler.js";
+import { ChatRequestValidator } from "./validators/ChatRequestValidator.js";
+import { VERSION } from "./version.js";
 
 export interface AppConfig {
   /** Bearer token clients must present. Set to null/undefined to disable auth. */
@@ -65,7 +66,7 @@ export function createApp(config: AppConfig): Hono {
     return c.json({
       status: "ok",
       model: "system",
-      version: "0.0.1",
+      version: VERSION,
     });
   });
 
@@ -145,7 +146,7 @@ export function createApp(config: AppConfig): Hono {
     // Inject MCP-discovered tools when the client sent none. The flag tells us
     // whether to auto-execute resulting tool calls (true only when MCP injected
     // them; client-supplied tools are returned to the client for execution).
-    let mcpTools: OpenAITool[] = [];
+    const mcpTools: OpenAITool[] = [];
     if (config.mcpClients && config.mcpClients.length > 0) {
       for (const m of config.mcpClients) {
         try {
@@ -234,6 +235,7 @@ export function createApp(config: AppConfig): Hono {
         });
 
         let completionTokens = 0;
+        let promptTokens = 0;
         let finishReason: string = FinishReason.openAIValue("stop");
         try {
           for await (const event of session.stream(
@@ -264,6 +266,7 @@ export function createApp(config: AppConfig): Hono {
               });
             } else {
               completionTokens = event.usage.completionTokens;
+              promptTokens = event.usage.promptTokens;
               finishReason = event.finishReason;
             }
           }
@@ -310,9 +313,9 @@ export function createApp(config: AppConfig): Hono {
               model: modelName,
               choices: [],
               usage: {
-                prompt_tokens: Math.max(1, Math.floor(promptText.length / 4)),
+                prompt_tokens: promptTokens,
                 completion_tokens: completionTokens,
-                total_tokens: Math.max(1, Math.floor(promptText.length / 4)) + completionTokens,
+                total_tokens: promptTokens + completionTokens,
               },
             }),
           });
@@ -334,9 +337,10 @@ export function createApp(config: AppConfig): Hono {
       // Tool-call detection: when the model emitted the documented
       // {"tool_calls": ...} envelope, surface it as proper OpenAI
       // tool_calls on the assistant message with finish_reason=tool_calls.
-      const calls = effectiveTools && effectiveTools.length > 0
-        ? ToolCallHandler.detectToolCall(result.content)
-        : null;
+      const calls =
+        effectiveTools && effectiveTools.length > 0
+          ? ToolCallHandler.detectToolCall(result.content)
+          : null;
 
       // MCP auto-execute: when MCP injected the tool list, we run the tool
       // ourselves and re-prompt for the final natural-language answer.
@@ -427,7 +431,9 @@ export function createApp(config: AppConfig): Hono {
       });
     } catch (err) {
       const classified = AfmError.classify(err);
-      debug(`chat completion error: ${AfmError.cliLabel(classified)} ${AfmError.openAIMessage(classified)}`);
+      debug(
+        `chat completion error: ${AfmError.cliLabel(classified)} ${AfmError.openAIMessage(classified)}`,
+      );
       return c.json(
         {
           error: {

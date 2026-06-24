@@ -12,3 +12,4 @@ coverage/
 .env.*.local
 .cache/
 ~/.cache/
+.release-temp/

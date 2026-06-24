@@ -152,11 +152,13 @@ curl -X POST http://127.0.0.1:1337/v1/chat/completions \
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `port` | `11434` | Listen port |
+| `port` | `1337` | Listen port |
 | `host` | `127.0.0.1` | Bind address |
 | `token` | `null` | Bearer token; omit or set `null` to disable auth |
 | `mcpServers` | `[]` | Stdio MCP servers whose tools are injected when the client sends none |
 | `debug` | no-op | Log callback |
+
+> **Auth note:** `startServer` defaults `token` to `null` (auth off) so embedders opt in explicitly. The `afm-server serve` CLI defaults to `sk-apple-1337` (auth on) and honors the `AFM_SERVER_TOKEN` env var.
 
 MCP server spec:
 

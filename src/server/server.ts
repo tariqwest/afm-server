@@ -3,7 +3,7 @@
 // umbrella CLI can spin up the API on a chosen port/host.
 // ============================================================================
 
-import { serve, type ServerType } from "@hono/node-server";
+import { type ServerType, serve } from "@hono/node-server";
 import { createApp } from "./app.js";
 import { McpStdioClient } from "./mcp/McpClient.js";
 import { InferenceService } from "./sdk/InferenceService.js";
@@ -16,7 +16,7 @@ export interface McpServerSpec {
 }
 
 export interface StartOptions {
-  /** Bind port. Default 11434. */
+  /** Bind port. Default 1337. */
   port?: number;
   /** Bind host. Default 127.0.0.1. */
   host?: string;
@@ -43,25 +43,22 @@ export async function startServer(opts: StartOptions): Promise<RunningServer> {
 
   const app = createApp({ inference, token: opts.token, debug, mcpClients });
 
-  const port = opts.port ?? 11434;
+  const port = opts.port ?? 1337;
   const hostname = opts.host ?? "127.0.0.1";
 
   return new Promise<RunningServer>((resolve) => {
-    const server: ServerType = serve(
-      { fetch: app.fetch, port, hostname },
-      () => {
-        debug(`afm-server listening on http://${hostname}:${port} (backend: apple-fm-sdk)`);
-        resolve({
-          stop: () =>
-            new Promise<void>((res) => {
-              server.close(async () => {
-                await Promise.allSettled(mcpClients.map((c) => c.shutdown()));
-                inference.shutdown();
-                res();
-              });
-            }),
-        });
-      },
-    );
+    const server: ServerType = serve({ fetch: app.fetch, port, hostname }, () => {
+      debug(`afm-server listening on http://${hostname}:${port} (backend: apple-fm-sdk)`);
+      resolve({
+        stop: () =>
+          new Promise<void>((res) => {
+            server.close(async () => {
+              await Promise.allSettled(mcpClients.map((c) => c.shutdown()));
+              inference.shutdown();
+              res();
+            });
+          }),
+      });
+    });
   });
 }

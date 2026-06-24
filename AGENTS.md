@@ -60,6 +60,7 @@ HTTP request
 | `src/server/app.ts` | Hono app factory, chat completion handler |
 | `src/server/server.ts` | `startServer()`, MCP client wiring, shutdown |
 | `src/server/index.ts` | Public exports (also `package.json` main) |
+| `src/server/version.ts` | Package version (single source of truth from `package.json`) |
 | `src/server/sdk/` | SDK adapter layer — start here for inference changes |
 | `src/server/session/Session.ts` | Thin wrapper over `LanguageModelSession` |
 | `src/server/session/ContextManager.ts` | Message folding → instructions + prompt |
@@ -71,7 +72,6 @@ HTTP request
 | `bin/afm-server.js` | Bin shim → `dist/cli/main.js` |
 | `test/unit/` | Vitest unit tests |
 | `test/e2e/` | Live CLI/server tests (require native SDK) |
-| `examples/` | Standalone `apple-fm-sdk` examples (not server internals) |
 | `scripts/release.js` | Release + Homebrew formula pipeline |
 
 ## Public API
@@ -83,10 +83,16 @@ import {
   startServer,
   createApp,
   InferenceService,
+  ModelProvider,
+  toGenerationOptions,
+  SdkErrorMapper,
   Session,
   AfmError,
   ModelBackend,
   ModelAvailability,
+  McpStdioClient,
+  makeContext,
+  VERSION,
 } from "afm-server";
 ```
 
@@ -130,7 +136,6 @@ E2E tests call `isNativeAvailable()` from `apple-fm-sdk` and skip when bindings 
 - Do not add `model: "pcc"` support until `apple-fm-sdk` ships `PrivateCloudComputeLanguageModel`
 - Do not split back into a pnpm workspace monorepo without explicit direction
 - Do not add `--helper` / `AFM_HELPER_PATH` flags
-- `examples/` are SDK demos — don't route server code through them
 
 ## Making changes
 
