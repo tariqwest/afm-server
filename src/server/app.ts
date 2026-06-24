@@ -216,28 +216,29 @@ export function createApp(config: AppConfig): Hono {
     if (request.stream) {
       const includeUsage = request.stream_options?.include_usage === true;
       return streamSSE(c, async (stream) => {
-        // Role chunk first (OpenAI wire format).
-        await stream.writeSSE({
-          data: JSON.stringify({
-            id: requestId,
-            object: "chat.completion.chunk",
-            created,
-            model: modelName,
-            choices: [
-              {
-                index: 0,
-                delta: { role: "assistant" },
-                finish_reason: null,
-                logprobs: null,
-              },
-            ],
-          }),
-        });
-
         let completionTokens = 0;
         let promptTokens = 0;
         let finishReason: string = FinishReason.openAIValue("stop");
+
         try {
+          // Role chunk first (OpenAI wire format).
+          await stream.writeSSE({
+            data: JSON.stringify({
+              id: requestId,
+              object: "chat.completion.chunk",
+              created,
+              model: modelName,
+              choices: [
+                {
+                  index: 0,
+                  delta: { role: "assistant" },
+                  finish_reason: null,
+                  logprobs: null,
+                },
+              ],
+            }),
+          });
+
           for await (const event of session.stream(
             promptText,
             {
@@ -270,6 +271,43 @@ export function createApp(config: AppConfig): Hono {
               finishReason = event.finishReason;
             }
           }
+
+          // Final finish chunk.
+          await stream.writeSSE({
+            data: JSON.stringify({
+              id: requestId,
+              object: "chat.completion.chunk",
+              created,
+              model: modelName,
+              choices: [
+                {
+                  index: 0,
+                  delta: {},
+                  finish_reason: finishReason,
+                  logprobs: null,
+                },
+              ],
+            }),
+          });
+
+          if (includeUsage) {
+            await stream.writeSSE({
+              data: JSON.stringify({
+                id: requestId,
+                object: "chat.completion.chunk",
+                created,
+                model: modelName,
+                choices: [],
+                usage: {
+                  prompt_tokens: promptTokens,
+                  completion_tokens: completionTokens,
+                  total_tokens: promptTokens + completionTokens,
+                },
+              }),
+            });
+          }
+
+          await stream.writeSSE({ data: "[DONE]" });
         } catch (err) {
           const classified = AfmError.classify(err);
           debug(`stream error: ${AfmError.cliLabel(classified)}`);
@@ -282,47 +320,9 @@ export function createApp(config: AppConfig): Hono {
             }),
           });
           await stream.writeSSE({ data: "[DONE]" });
+        } finally {
           await session.close();
-          return;
         }
-
-        // Final finish chunk.
-        await stream.writeSSE({
-          data: JSON.stringify({
-            id: requestId,
-            object: "chat.completion.chunk",
-            created,
-            model: modelName,
-            choices: [
-              {
-                index: 0,
-                delta: {},
-                finish_reason: finishReason,
-                logprobs: null,
-              },
-            ],
-          }),
-        });
-
-        if (includeUsage) {
-          await stream.writeSSE({
-            data: JSON.stringify({
-              id: requestId,
-              object: "chat.completion.chunk",
-              created,
-              model: modelName,
-              choices: [],
-              usage: {
-                prompt_tokens: promptTokens,
-                completion_tokens: completionTokens,
-                total_tokens: promptTokens + completionTokens,
-              },
-            }),
-          });
-        }
-
-        await stream.writeSSE({ data: "[DONE]" });
-        await session.close();
       });
     }
 

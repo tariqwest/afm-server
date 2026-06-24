@@ -13,8 +13,6 @@
 // module is the one place that changes.
 // ============================================================================
 
-import { ChatRequestValidator } from "../validators/ChatRequestValidator.js";
-import type { ContextConfig } from "../context/ContextStrategy.js";
 import type { OpenAIMessage, OpenAITool, ResponseFormat } from "../openai/index.js";
 import { ToolCallHandler } from "../tools/ToolCallHandler.js";
 import { messageText } from "../openai/index.js";
@@ -32,8 +30,6 @@ export interface MakeSessionInput {
    * op (planned for M4).
    */
   responseFormat?: ResponseFormat;
-  /** Reserved for future use; passed straight through for now. */
-  context?: ContextConfig;
 }
 
 export interface PreparedSession {
@@ -182,11 +178,7 @@ function pickValidationError(input: MakeSessionInput): string | null {
   const last = input.messages.at(-1);
   if (!last) return "messages slice is empty";
   if (last.role !== "user" && last.role !== "tool") {
-    const failure = ChatRequestValidator.validate({
-      model: ChatRequestValidator.validModel,
-      messages: input.messages,
-    } as Parameters<typeof ChatRequestValidator.validate>[0]);
-    return failure ? ChatRequestValidator.message(failure) : "invalid last-message role";
+    return "Last message must have role 'user' or 'tool'";
   }
   return null;
 }

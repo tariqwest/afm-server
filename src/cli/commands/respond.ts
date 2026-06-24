@@ -70,9 +70,9 @@ export const respondCommand = defineCommand({
     );
 
     const sessionOptions = {
-      temperature: args.temperature ? parseFloat(args.temperature as string) : undefined,
-      maxTokens: args["max-tokens"] ? parseInt(args["max-tokens"] as string, 10) : undefined,
-      seed: args.seed ? parseInt(args.seed as string, 10) : undefined,
+      temperature: args.temperature ? Number.parseFloat(args.temperature as string) : undefined,
+      maxTokens: args["max-tokens"] ? Number.parseInt(args["max-tokens"] as string, 10) : undefined,
+      seed: args.seed ? Number.parseInt(args.seed as string, 10) : undefined,
     };
 
     try {

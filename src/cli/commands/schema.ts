@@ -73,7 +73,8 @@ export const schemaCommand = defineCommand({
       if (args.string) {
         for (const field of String(args.string).split(",")) {
           const parts = field.split(":");
-          const name = parts[0]!;
+          const name = parts[0];
+          if (!name) continue;
           const desc = parts[1] ?? name;
           properties[name] = { type: "string", description: desc };
           required.push(name);
@@ -84,7 +85,8 @@ export const schemaCommand = defineCommand({
       if (args.int) {
         for (const field of String(args.int).split(",")) {
           const parts = field.split(":");
-          const name = parts[0]!;
+          const name = parts[0];
+          if (!name) continue;
           const desc = parts[1] ?? name;
           properties[name] = { type: "integer", description: desc };
           required.push(name);
@@ -95,7 +97,8 @@ export const schemaCommand = defineCommand({
       if (args.number) {
         for (const field of String(args.number).split(",")) {
           const parts = field.split(":");
-          const name = parts[0]!;
+          const name = parts[0];
+          if (!name) continue;
           const desc = parts[1] ?? name;
           properties[name] = { type: "number", description: desc };
           required.push(name);
@@ -106,7 +109,8 @@ export const schemaCommand = defineCommand({
       if (args.bool) {
         for (const field of String(args.bool).split(",")) {
           const parts = field.split(":");
-          const name = parts[0]!;
+          const name = parts[0];
+          if (!name) continue;
           const desc = parts[1] ?? name;
           properties[name] = { type: "boolean", description: desc };
           required.push(name);

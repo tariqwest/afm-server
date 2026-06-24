@@ -11,9 +11,6 @@ importers:
       '@hono/node-server':
         specifier: ^1.13.7
         version: 1.19.14(hono@4.12.25)
-      '@hono/zod-validator':
-        specifier: ^0.4.2
-        version: 0.4.3(hono@4.12.25)(zod@3.25.76)
       apple-fm-sdk:
         specifier: link:../ts-apple-fm-sdk
         version: link:../ts-apple-fm-sdk
@@ -23,9 +20,6 @@ importers:
       hono:
         specifier: ^4.6.14
         version: 4.12.25
-      pino:
-        specifier: ^9.5.0
-        version: 9.14.0
       zod:
         specifier: ^3.24.1
         version: 3.25.76
