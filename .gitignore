@@ -10,3 +10,5 @@ coverage/
 .env
 .env.local
 .env.*.local
+.cache/
+~/.cache/
