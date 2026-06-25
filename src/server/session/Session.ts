@@ -1,5 +1,7 @@
 // ============================================================================
-// Session.ts — Per-request LanguageModelSession wrapper over InferenceService.
+// Session.ts — Per-request session wrapper. Dispatches to either the on-device
+// InferenceService (apple-fm-sdk) or PccInferenceService (fm-wrap) based on
+// the requested ModelBackend.
 // ============================================================================
 
 import type { LanguageModelSession } from "apple-fm-sdk";
@@ -10,6 +12,7 @@ import {
   type InferenceRespondResult,
   type InferenceStreamEvent,
 } from "../sdk/InferenceService.js";
+import { PccInferenceService } from "../pcc/PccInferenceService.js";
 
 export interface SessionOptions {
   temperature?: number;
@@ -21,9 +24,10 @@ export type SessionRespondResult = InferenceRespondResult;
 
 export class Session {
   private constructor(
-    private readonly inference: InferenceService,
-    private readonly sdkSession: LanguageModelSession,
+    private readonly inference: InferenceService | null,
+    private readonly sdkSession: LanguageModelSession | null,
     public readonly backend: ModelBackend,
+    private readonly instructions?: string,
   ) {}
 
   static open(
@@ -31,16 +35,25 @@ export class Session {
     backend: ModelBackend,
     instructions?: string,
   ): Session {
+    if (backend === "privateCloudCompute") {
+      // PCC sessions don't use the apple-fm-sdk LanguageModelSession.
+      // fm-wrap drives the fm CLI subprocess per-call.
+      return new Session(null, null, backend, instructions);
+    }
+
     try {
       const sdkSession = inference.openSession(backend, instructions);
-      return new Session(inference, sdkSession, backend);
+      return new Session(inference, sdkSession, backend, instructions);
     } catch (err) {
       throw AfmError.classify(err);
     }
   }
 
   async respond(prompt: string, options?: SessionOptions): Promise<SessionRespondResult> {
-    return this.inference.respond(this.sdkSession, prompt, options);
+    if (this.backend === "privateCloudCompute") {
+      return PccInferenceService.respond(prompt, this.instructions, options);
+    }
+    return this.inference!.respond(this.sdkSession!, prompt, options);
   }
 
   async *stream(
@@ -48,14 +61,20 @@ export class Session {
     options?: SessionOptions,
     signal?: AbortSignal,
   ): AsyncGenerator<InferenceStreamEvent, void, void> {
-    yield* this.inference.stream(this.sdkSession, prompt, options, signal);
+    if (this.backend === "privateCloudCompute") {
+      yield* PccInferenceService.stream(prompt, this.instructions, options, signal);
+      return;
+    }
+    yield* this.inference!.stream(this.sdkSession!, prompt, options, signal);
   }
 
   async close(): Promise<void> {
-    try {
-      this.sdkSession.release();
-    } catch {
-      // Best-effort: a failed close is non-fatal.
+    if (this.sdkSession) {
+      try {
+        this.sdkSession.release();
+      } catch {
+        // Best-effort: a failed close is non-fatal.
+      }
     }
   }
 }

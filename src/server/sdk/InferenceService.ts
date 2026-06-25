@@ -54,14 +54,6 @@ export class InferenceService {
     backend: ModelBackend,
     instructions?: string,
   ): LanguageModelSession {
-    if (backend === "privateCloudCompute") {
-      throw AfmError.classify({
-        kind: "unknown",
-        message:
-          "Private Cloud Compute (model: 'pcc') is not supported. Use model: 'system'.",
-      });
-    }
-
     return new LanguageModelSession({
       instructions,
       model: this.provider.sdkModel,

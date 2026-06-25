@@ -1,17 +1,20 @@
 # fm-server
 
-OpenAI-compatible HTTP server for Apple Foundation Models on macOS. Drop it into any Node.js app or point an OpenAI client at `http://127.0.0.1:<port>/v1` to run inference on-device via [`ts-apple-fm-sdk`](https://github.com/tariqwest/ts-apple-fm-sdk).
+OpenAI-compatible HTTP server for Apple Foundation Models on macOS. Drop it into any Node.js app or point an OpenAI client at `http://*********:<port>/v1` to run inference on-device or via Private Cloud Compute.
 
 ## Overview
 
-fm-server exposes a small, OpenAI-shaped HTTP surface over Apple's on-device `SystemLanguageModel`. Inference runs in-process through `apple-fm-sdk` — no subprocess backends, no helper binaries, no IPC to `/usr/bin/fm`.
+fm-server exposes a small, OpenAI-shaped HTTP surface over Apple's Foundation Models:
+
+- **`system`** — On-device `SystemLanguageModel` via [`apple-fm-sdk`](https://github.com/tariqwest/ts-apple-fm-sdk) (in-process FFI)
+- **`pcc`** — Private Cloud Compute `PrivateCloudComputeLanguageModel` via [`fm-wrap`](https://github.com/tariqwest/fm-wrap) (wraps the macOS `fm` CLI)
 
 **Endpoints**
 
 | Method | Path | Purpose |
 |--------|------|---------|
 | `GET` | `/health` | Liveness check (no auth) |
-| `GET` | `/v1/models` | List the on-device model and supported parameters |
+| `GET` | `/v1/models` | List available models and supported parameters |
 | `POST` | `/v1/chat/completions` | Chat completion (streaming and non-streaming) |
 
 **Capabilities**
@@ -20,25 +23,24 @@ fm-server exposes a small, OpenAI-shaped HTTP surface over Apple's on-device `Sy
 - Server-sent events streaming (`stream: true`)
 - Tool calling with optional stdio MCP server injection
 - Structured output via `response_format` (`json_object`, `json_schema`)
-- Per-request `LanguageModelSession` lifecycle with automatic cleanup
+- Per-request session lifecycle with automatic cleanup
 
-## Model
-
-Only one model is served:
+## Models
 
 | Model ID | Backend | Requirements |
 |----------|---------|--------------|
 | `system` | On-device `SystemLanguageModel` | macOS 26+, Apple Silicon, Apple Intelligence enabled |
+| `pcc` | Private Cloud Compute via `fm` CLI | macOS 27+, `fm` CLI at `/usr/bin/fm` |
 
-Requests with `model: "pcc"` or any other model ID are rejected with `400`.
+Requests with any other model ID are rejected with `400`.
 
 ## Requirements
 
-- macOS 26 (Tahoe) or later
+- macOS 26 (Tahoe) or later (macOS 27+ for PCC)
 - Apple Silicon (M1+)
 - Apple Intelligence enabled in System Settings
 - Node.js 20+
-- For local development: a sibling checkout of [`ts-apple-fm-sdk`](https://github.com/tariqwest/ts-apple-fm-sdk)
+- For local development: sibling checkouts of [`ts-apple-fm-sdk`](https://github.com/tariqwest/ts-apple-fm-sdk) and [`fm-wrap`](https://github.com/tariqwest/fm-wrap)
 
 ## Install
 
@@ -53,6 +55,7 @@ From source:
 ```bash
 git clone https://github.com/tariqwest/fm-server.git
 git clone https://github.com/tariqwest/ts-apple-fm-sdk.git ../ts-apple-fm-sdk
+git clone https://github.com/tariqwest/fm-wrap.git ../fm-wrap
 cd fm-server
 pnpm install && pnpm run build
 ```
@@ -98,12 +101,24 @@ const app = createApp({ inference, token: "sk-apple-1337" });
 ### Chat completion
 
 ```bash
-curl -X POST http://127.0.0.1:1337/v1/chat/completions \
-  -H "Authorization: Bearer sk-apple-1337" \
+curl -X POST http://*********:1337/v1/chat/completions \
+  -H "Authorization: Bearer *************" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "system",
     "messages": [{"role": "user", "content": "Say hi."}]
+  }'
+```
+
+### Private Cloud Compute
+
+```bash
+curl -X POST http://*********:1337/v1/chat/completions \
+  -H "Authorization: Bearer *************" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "pcc",
+    "messages": [{"role": "user", "content": "Explain quantum computing."}]
   }'
 ```
 
@@ -187,27 +202,38 @@ HTTP client
   → Hono (app.ts)
        → ChatRequestValidator
        → ContextManager        # fold messages → (instructions, prompt)
-       → Session               # per-request LanguageModelSession
-            → InferenceService
-                 → apple-fm-sdk (in-process FFI)
-                      → SystemLanguageModel
-                      → LanguageModelSession
+       → Session.open(backend)
+            ├─ onDevice:
+            │    → InferenceService
+            │         → apple-fm-sdk (in-process FFI)
+            │              → SystemLanguageModel
+            └─ privateCloudCompute:
+                 → PccInferenceService
+                      → fm-wrap → /usr/bin/fm CLI
+                           → PrivateCloudComputeLanguageModel
 ```
 
-The adapter layer in `src/server/sdk/` maps OpenAI parameters to `GenerationOptions`, SDK errors to `AfmError`, and streaming snapshots to SSE deltas.
+The adapter layer in `src/server/sdk/` maps OpenAI parameters to `GenerationOptions`, SDK errors to `AfmError`, and streaming snapshots to SSE deltas (on-device path).
+
+The PCC adapter in `src/server/pcc/` wraps `fm-wrap`'s `respond()` function, converting its output to the same `InferenceRespondResult`/`InferenceStreamEvent` shapes.
 
 | Module | Role |
 |--------|------|
 | `ModelProvider` | Model lifecycle, availability, context size, token counting |
 | `GenerationMapper` | OpenAI params → `GenerationOptions` |
 | `SdkErrorMapper` | SDK errors → `AfmError` |
-| `InferenceService` | Open, respond, stream, shutdown |
+| `InferenceService` | On-device: open, respond, stream, shutdown |
+| `PccInferenceService` | PCC: respond, stream (via fm-wrap) |
 
 ## Project layout
 
 ```
 fm-server/
-├── src/server/       HTTP routes, SDK adapter, MCP, validators
+├── src/server/       HTTP routes, SDK adapter, PCC adapter, MCP, validators
+│   ├── sdk/          On-device inference (apple-fm-sdk)
+│   ├── pcc/          PCC inference (fm-wrap)
+│   ├── session/      Backend-dispatching session wrapper
+│   └── ...
 ├── test/             unit and e2e tests
 └── scripts/release.js
 ```

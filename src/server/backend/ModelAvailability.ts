@@ -55,6 +55,9 @@ export const ModelAvailability = {
           "Intel Macs are not supported - this is a hard Apple requirement,",
           "not an fm-server limitation.",
           "",
+          "Note: Private Cloud Compute (model: 'pcc') may still be available",
+          "on this device via the fm CLI.",
+          "",
           "Details: https://support.apple.com/en-us/121115",
         ].join("\n");
       case "modelNotReady":

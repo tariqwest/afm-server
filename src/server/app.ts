@@ -97,6 +97,18 @@ export function createApp(config: AppConfig): Hono {
             "Apple on-device model via apple-fm-sdk (FoundationModels). " +
             "Unsupported parameters are rejected with 400 when present (except n=1 and logprobs=false).",
         },
+        {
+          id: "pcc",
+          object: "model",
+          created: 1719792000,
+          owned_by: "apple",
+          context_window: 4096,
+          supported_parameters: sharedParams,
+          unsupported_parameters: unsupported,
+          notes:
+            "Apple Private Cloud Compute model via fm CLI (fm-wrap). " +
+            "Runs inference on Apple's private cloud infrastructure.",
+        },
       ],
     });
   });

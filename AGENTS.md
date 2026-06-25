@@ -9,25 +9,29 @@ Guide for AI agents working in this repository.
 1. An OpenAI-compatible HTTP server (Hono)
 2. A CLI binary (`fm-server`)
 
-All inference runs **in-process** via [`apple-fm-sdk`](https://github.com/tariqwest/ts-apple-fm-sdk). There are no subprocess backends, no Swift helper, and no workspace/monorepo layout.
+Two inference backends:
+
+- **`system`** (on-device) — runs in-process via [`apple-fm-sdk`](https://github.com/tariqwest/ts-apple-fm-sdk)
+- **`pcc`** (Private Cloud Compute) — wraps the macOS `fm` CLI via [`fm-wrap`](https://github.com/tariqwest/fm-wrap)
 
 - **Repo:** https://github.com/tariqwest/fm-server
 - **Package name:** `fm-server` (version in `package.json`)
-- **Platform:** macOS 26+, Apple Silicon only (`package.json` `os`/`cpu` fields)
+- **Platform:** macOS 26+, Apple Silicon only (`package.json` `os`/`cpu` fields); PCC requires macOS 27+
 
 ## Architecture
 
 ```
 src/cli/          Terminal commands (citty)
-    └─ imports ──► src/server/index.ts (public API)
+    └─ imports ► src/server/index.ts (public API)
 
 src/server/
     app.ts        Hono routes: /health, /v1/models, /v1/chat/completions
     server.ts     @hono/node-server bootstrap (startServer)
-    session/      Per-request LanguageModelSession wrapper
+    session/      Backend-dispatching session wrapper
     sdk/          apple-fm-sdk adapter (InferenceService, ModelProvider, …)
+    pcc/          fm-wrap adapter (PccInferenceService)
     mcp/          stdio MCP tool injection
-    validators/   Request validation (rejects pcc, unsupported params)
+    validators/   Request validation (model acceptance, unsupported params)
     errors/       AfmError taxonomy → OpenAI wire format
 ```
 
@@ -38,20 +42,25 @@ HTTP request
   → ChatRequestValidator.validate()
   → ContextManager.makeContext()     # fold messages → (instructions, prompt)
   → Session.open(inference, backend, instructions)
-  → InferenceService.respond() | .stream()
-  → apple-fm-sdk LanguageModelSession
-  → Session.close()                  # release() in finally
+       ├─ onDevice:
+       │    → InferenceService.respond() | .stream()
+       │    → apple-fm-sdk LanguageModelSession
+       └─ privateCloudCompute:
+            → PccInferenceService.respond() | .stream()
+            → fm-wrap → /usr/bin/fm CLI
+  → Session.close()
 ```
 
 ### Session strategy
 
-- **HTTP:** one `LanguageModelSession` per `/v1/chat/completions` request
-- **CLI `chat`:** reuses a single session across REPL turns
+- **HTTP:** one session per `/v1/chat/completions` request (both backends)
+- **CLI `chat`:** on-device reuses a single `LanguageModelSession` across REPL turns; PCC uses `fm-wrap`'s `createChatSession()` (PTY-based `fm chat`)
 - Multi-turn HTTP history is folded into text by `ContextManager` (Transcript API not yet wired)
 
 ### Streaming
 
-`apple-fm-sdk` `streamResponse()` yields cumulative snapshots. `InferenceService.stream()` converts to deltas via `snapshot.slice(prev.length)` before emitting SSE chunks.
+- **On-device:** `apple-fm-sdk` `streamResponse()` yields cumulative snapshots. `InferenceService.stream()` converts to deltas via `snapshot.slice(prev.length)` before emitting SSE chunks.
+- **PCC:** `fm-wrap`'s `respond()` with `stream: true` yields incremental text chunks directly.
 
 ## Directory map
 
@@ -61,8 +70,9 @@ HTTP request
 | `src/server/server.ts` | `startServer()`, MCP client wiring, shutdown |
 | `src/server/index.ts` | Public exports (also `package.json` main) |
 | `src/server/version.ts` | Package version (single source of truth from `package.json`) |
-| `src/server/sdk/` | SDK adapter layer — start here for inference changes |
-| `src/server/session/Session.ts` | Thin wrapper over `LanguageModelSession` |
+| `src/server/sdk/` | On-device SDK adapter layer (apple-fm-sdk) |
+| `src/server/pcc/PccInferenceService.ts` | PCC adapter (fm-wrap) |
+| `src/server/session/Session.ts` | Backend-dispatching session wrapper |
 | `src/server/session/ContextManager.ts` | Message folding → instructions + prompt |
 | `src/server/validators/ChatRequestValidator.ts` | Model/param validation |
 | `src/server/errors/AfmError.ts` | Error taxonomy + HTTP status mapping |
@@ -101,7 +111,7 @@ CLI commands import from `../../server/index.js` (relative), not from the packag
 ## Commands
 
 ```bash
-pnpm install          # requires ../ts-apple-fm-sdk for apple-fm-sdk link dep
+pnpm install          # requires ../ts-apple-fm-sdk and ../fm-wrap
 pnpm run build        # tsc → dist/
 pnpm test             # vitest (unit + e2e)
 pnpm run test:e2e     # e2e only
@@ -118,7 +128,7 @@ E2E tests call `isNativeAvailable()` from `apple-fm-sdk` and skip when bindings 
 - **TypeScript** — strict mode, `src/` → `dist/` mirroring
 - **Lint/format** — Biome (`pnpm run check`)
 - **Errors** — SDK errors flow through `SdkErrorMapper` → `AfmError` → OpenAI JSON envelope
-- **Model ID** — only `system` accepted; `pcc` returns 400 with `pccUnsupported`
+- **Model IDs** — `system` (on-device) and `pcc` (Private Cloud Compute) accepted; others rejected with 400
 - **Logging prefix** — CLI messages use `fm-server:` on stderr
 
 ## SDK error → HTTP status
@@ -132,8 +142,7 @@ E2E tests call `isNativeAvailable()` from `apple-fm-sdk` and skip when bindings 
 
 ## What NOT to do
 
-- Do not reintroduce subprocess backends (`bridge/`, `fm/`, `afm-fm-helper`, `/usr/bin/fm`)
-- Do not add `model: "pcc"` support until `apple-fm-sdk` ships `PrivateCloudComputeLanguageModel`
+- Do not reintroduce subprocess backends for on-device inference (`bridge/`, `afm-fm-helper`)
 - Do not split back into a pnpm workspace monorepo without explicit direction
 - Do not add `--helper` / `AFM_HELPER_PATH` flags
 
@@ -144,7 +153,8 @@ E2E tests call `isNativeAvailable()` from `apple-fm-sdk` and skip when bindings 
 | New HTTP route | `src/server/app.ts` |
 | OpenAI request schema | `src/server/openai/index.ts` |
 | Validation rules | `src/server/validators/ChatRequestValidator.ts` |
-| Inference behavior | `src/server/sdk/InferenceService.ts` |
+| On-device inference | `src/server/sdk/InferenceService.ts` |
+| PCC inference | `src/server/pcc/PccInferenceService.ts` |
 | SDK error mapping | `src/server/sdk/SdkErrorMapper.ts` |
 | New CLI command | `src/cli/commands/` + register in `src/cli/main.ts` |
 | MCP tool injection | `src/server/mcp/McpClient.ts`, `src/server/app.ts` |

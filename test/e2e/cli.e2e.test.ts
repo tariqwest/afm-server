@@ -60,10 +60,15 @@ describeE2E("E2E: CLI commands", () => {
     30_000,
   );
 
-  it("respond command rejects pcc", async () => {
-    const { exitCode } = await runCommand(["respond", "--model", "pcc", "Hello"]);
-    expect(exitCode).toBe(2);
-  });
+  it(
+    "respond command accepts pcc model",
+    async () => {
+      const { exitCode } = await runCommand(["respond", "--model", "pcc", "Hello"]);
+      // PCC may succeed (0) or fail due to fm CLI availability (1), but should not reject with 2
+      expect(exitCode).not.toBe(2);
+    },
+    30_000,
+  );
 
   it("schema command generates object schema", async () => {
     const { stdout, exitCode } = await runCommand([

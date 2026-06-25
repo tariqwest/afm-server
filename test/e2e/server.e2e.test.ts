@@ -87,13 +87,14 @@ describeE2E("E2E: fm-server serve (built app)", () => {
     expect(body).toHaveProperty("model");
   });
 
-  it("models endpoint returns the on-device model", async () => {
+  it("models endpoint returns available models", async () => {
     const res = await fetch(`${SERVER_URL}/v1/models`, { headers: AUTH_HEADERS });
     expect(res.status).toBe(200);
 
     const body = await res.json();
     expect(body).toHaveProperty("object", "list");
-    expect(body.data.map((m: { id: string }) => m.id)).toEqual(["system"]);
+    expect(body.data.map((m: { id: string }) => m.id)).toContain("system");
+    expect(body.data.map((m: { id: string }) => m.id)).toContain("pcc");
   });
 
   it("chat completions endpoint accepts requests", async () => {
@@ -119,18 +120,29 @@ describeE2E("E2E: fm-server serve (built app)", () => {
     }
   }, 10000);
 
-  it("rejects pcc model with 400", async () => {
-    const res = await fetch(`${SERVER_URL}/v1/chat/completions`, {
-      method: "POST",
-      headers: AUTH_HEADERS,
-      body: JSON.stringify({
-        model: "pcc",
-        messages: [{ role: "user", content: "Hello" }],
-      }),
-    });
+  it("accepts pcc model requests", async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
 
-    expect(res.status).toBe(400);
-  });
+    try {
+      const res = await fetch(`${SERVER_URL}/v1/chat/completions`, {
+        method: "POST",
+        headers: AUTH_HEADERS,
+        body: JSON.stringify({
+          model: "pcc",
+          messages: [{ role: "user", content: "Hello" }],
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+      // PCC may succeed or fail depending on fm CLI availability, but should not 400
+      expect(res.status).not.toBe(400);
+    } catch (err) {
+      clearTimeout(timeout);
+      expect(String(err)).toMatch(/abort|timeout/i);
+    }
+  }, 15000);
 
   it("rejects invalid model IDs", async () => {
     const res = await fetch(`${SERVER_URL}/v1/chat/completions`, {

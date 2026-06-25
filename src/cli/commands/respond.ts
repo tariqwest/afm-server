@@ -3,6 +3,7 @@
 // ============================================================================
 
 import { defineCommand } from "citty";
+import { respond as fmRespond } from "fm-wrap";
 import { ModelBackend, Session } from "../../server/index.js";
 import { createInference } from "../inference.js";
 
@@ -19,7 +20,7 @@ export const respondCommand = defineCommand({
     },
     model: {
       type: "string",
-      description: "Model to use: 'system' (on-device, default). PCC is not supported.",
+      description: "Model to use: 'system' (on-device, default) or 'pcc' (Private Cloud Compute).",
       default: "system",
     },
     stream: {
@@ -54,14 +55,14 @@ export const respondCommand = defineCommand({
       process.exit(2);
     }
 
-    if (args.model === "pcc") {
-      process.stderr.write(
-        "fm-server: Private Cloud Compute (model: 'pcc') is not supported. Use model: 'system'.\n",
-      );
-      process.exit(2);
+    const modelBackend = ModelBackend.fromModelName(String(args.model));
+
+    // PCC: route through fm-wrap directly
+    if (modelBackend === "privateCloudCompute") {
+      await respondPcc(promptText, args);
+      return;
     }
 
-    const modelBackend = ModelBackend.fromModelName(String(args.model));
     const { inference, shutdown } = createInference();
     const session = Session.open(
       inference,
@@ -124,6 +125,38 @@ export const respondCommand = defineCommand({
     }
   },
 });
+
+async function respondPcc(
+  prompt: string,
+  args: { stream?: boolean; instructions?: unknown; json?: boolean },
+): Promise<void> {
+  const instructions = args.instructions as string | undefined;
+
+  if (args.stream) {
+    const chunks = fmRespond(prompt, { model: "pcc", instructions, stream: true });
+    let fullContent = "";
+    for await (const chunk of chunks) {
+      process.stdout.write(chunk.text);
+      fullContent += chunk.text;
+    }
+    if (args.json) {
+      process.stdout.write(
+        `\n${JSON.stringify({ model: "pcc", content: fullContent, finish_reason: "stop" })}\n`,
+      );
+    } else {
+      process.stdout.write("\n");
+    }
+  } else {
+    const result = await fmRespond(prompt, { model: "pcc", instructions, stream: false });
+    if (args.json) {
+      process.stdout.write(
+        `${JSON.stringify({ model: "pcc", content: result.text, finish_reason: "stop" })}\n`,
+      );
+    } else {
+      process.stdout.write(`${result.text}\n`);
+    }
+  }
+}
 
 async function readAllStdin(): Promise<string> {
   if (process.stdin.isTTY) return "";

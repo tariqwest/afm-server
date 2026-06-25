@@ -12,8 +12,7 @@ export type ChatRequestValidationFailure =
   | { kind: "invalidLastRole" }
   | { kind: "imageContent" }
   | { kind: "invalidParameterValue"; detail: string }
-  | { kind: "invalidModel"; model: string }
-  | { kind: "pccUnsupported" };
+  | { kind: "invalidModel"; model: string };
 
 export type UnsupportedChatParameter =
   | "logprobs"
@@ -35,7 +34,7 @@ export const ChatRequestValidator = {
    * `ModelBackend.fromModelName`. Comparison is case-insensitive after
    * trimming whitespace.
    */
-  acceptedModelIDs: new Set<string>(["system"]),
+  acceptedModelIDs: new Set<string>(["system", "pcc"]),
 
   validate(request: ChatCompletionRequest): ChatRequestValidationFailure | null {
     if (request.messages.length === 0) {
@@ -43,9 +42,6 @@ export const ChatRequestValidator = {
     }
 
     const normalized = request.model.trim().toLowerCase();
-    if (normalized === "pcc") {
-      return { kind: "pccUnsupported" };
-    }
     if (!ChatRequestValidator.acceptedModelIDs.has(normalized)) {
       return { kind: "invalidModel", model: request.model };
     }
@@ -93,12 +89,7 @@ export const ChatRequestValidator = {
       case "invalidModel":
         return (
           `The model '${f.model}' does not exist. Available models: ` +
-          "'system' (on-device)."
-        );
-      case "pccUnsupported":
-        return (
-          "Private Cloud Compute (model: 'pcc') is not supported in this version. " +
-          "Use model: 'system' for on-device inference."
+          "'system' (on-device), 'pcc' (Private Cloud Compute)."
         );
     }
   },
@@ -117,8 +108,6 @@ export const ChatRequestValidator = {
         return `validation failed: ${f.detail}`;
       case "invalidModel":
         return `validation failed: unknown model ${f.model}`;
-      case "pccUnsupported":
-        return "validation failed: pcc unsupported";
     }
   },
 } as const;

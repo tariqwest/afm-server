@@ -5,6 +5,7 @@
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { defineCommand } from "citty";
+import { createChatSession } from "fm-wrap";
 import { ModelBackend, Session } from "../../server/index.js";
 import { createInference } from "../inference.js";
 
@@ -16,7 +17,7 @@ export const chatCommand = defineCommand({
   args: {
     model: {
       type: "string",
-      description: "Model to use: 'system' (on-device, default). PCC is not supported.",
+      description: "Model to use: 'system' (on-device, default) or 'pcc' (Private Cloud Compute).",
       default: "system",
     },
     instructions: { type: "string", description: "Optional system instructions." },
@@ -27,15 +28,15 @@ export const chatCommand = defineCommand({
       process.exit(2);
     }
 
-    if (args.model === "pcc") {
-      process.stderr.write(
-        "fm-server: Private Cloud Compute (model: 'pcc') is not supported. Use model: 'system'.\n",
-      );
-      process.exit(2);
+    const modelBackend = ModelBackend.fromModelName(String(args.model));
+
+    // PCC: use fm-wrap's chat session (PTY-based fm chat)
+    if (modelBackend === "privateCloudCompute") {
+      await chatPcc(args.instructions as string | undefined);
+      return;
     }
 
     const { inference, shutdown } = createInference();
-    const modelBackend = ModelBackend.fromModelName(String(args.model));
     const session = Session.open(
       inference,
       modelBackend,
@@ -71,3 +72,30 @@ export const chatCommand = defineCommand({
     }
   },
 });
+
+async function chatPcc(instructions?: string): Promise<void> {
+  const rl = createInterface({ input, output });
+  process.stdout.write("fm-server chat (pcc). Ctrl-D to exit.\n");
+
+  const chat = await createChatSession({ model: "pcc", instructions });
+
+  try {
+    while (true) {
+      const line = await rl.question("you> ").catch(() => null);
+      if (line == null) break;
+      if (line.trim() === "") continue;
+      process.stdout.write("assistant> ");
+      try {
+        const reply = await chat.send(line);
+        process.stdout.write(`${reply}\n`);
+      } catch (err) {
+        process.stdout.write("\n");
+        process.stderr.write(`fm-server: error - ${err instanceof Error ? err.message : err}\n`);
+      }
+    }
+  } finally {
+    rl.close();
+    await chat.close();
+    process.stdout.write("\nGoodbye.\n");
+  }
+}
