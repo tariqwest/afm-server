@@ -41,14 +41,16 @@
     "lint": "biome lint .",
     "check": "biome check .",
     "release": "node scripts/release.js",
+    "postinstall": "chmod +x node_modules/**/node-pty/prebuilds/darwin-arm64/spawn-helper 2>/dev/null || true",
     "ci": "pnpm run build && pnpm run test && pnpm run typecheck"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",
     "apple-fm-sdk": "link:../ts-apple-fm-sdk",
-    "fm-wrap": "link:../fm-wrap",
     "citty": "^0.1.6",
+    "fm-wrap": "link:../fm-wrap",
     "hono": "^4.6.14",
+    "node-pty": "^1.1.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {
