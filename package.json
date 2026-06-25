@@ -1,6 +1,6 @@
 {
   "name": "fm-server",
-  "version": "0.0.10",
+  "version": "0.1.0",
   "description": "Apple Foundation Models for Node.js — OpenAI-compatible HTTP server and CLI for Apple Intelligence.",
   "license": "MIT",
   "author": "Tariq West",
@@ -40,7 +40,10 @@
     "format": "biome format --write .",
     "lint": "biome lint .",
     "check": "biome check .",
-    "release": "node scripts/release.js",
+    "release": "node scripts/bump.js && node scripts/release.js",
+    "release:bump": "node scripts/bump.js",
+    "release:publish": "node scripts/release.js",
+    "release:gh": "node scripts/release.js --no-brew",
     "ci": "pnpm run build && pnpm run test && pnpm run typecheck"
   },
   "dependencies": {

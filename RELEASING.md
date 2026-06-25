@@ -1,77 +1,94 @@
 # Releasing fm-server
 
-This document describes the release process for fm-server, including Homebrew tap publication.
+Release process for fm-server, including Homebrew tap publication.
 
 ## Version Numbering
 
-fm-server follows semantic versioning: `MAJOR.MINOR.PATCH`
+Semantic versioning: `MAJOR.MINOR.PATCH`
 
 - **MAJOR**: Breaking changes to the API or CLI interface
 - **MINOR**: New features
 - **PATCH**: Bug fixes and minor improvements
 
-## Automated Release Process
-
-The release process is fully automated via the `release.js` script and GitHub Actions.
-
-### Local Release
+## Quick Start
 
 ```bash
-export GITHUB_TOKEN=ghp_xxxxxxxxxxxx
-pnpm run release
+gh auth login                 # one-time setup
+pnpm run release              # auto-detect bump + publish (GH + Homebrew)
+pnpm run release:gh           # auto-detect bump + GitHub release only (no Homebrew)
 ```
 
-The script will:
-
-1. Build the project
-2. Create the prebuilt release tarball
-3. Calculate SHA256 hashes
-4. Create a GitHub release with artifacts
-5. Generate the Homebrew formula
-6. Publish the formula to the Homebrew tap
-
-### CI/CD Release
-
-Push a version tag to trigger the workflow:
+Or as separate steps:
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+pnpm run release:bump         # auto-detect bump (updates package.json)
+pnpm run release:bump patch   # explicit patch bump
+pnpm run release:publish      # build, bundle, GitHub release, Homebrew tap
+pnpm run release:gh           # build, bundle, GitHub release only
 ```
 
-GitHub Actions will build, test, run the release script, and update the Homebrew tap.
+## How It Works
 
-### Dry Run Mode
+The release is split into two scripts:
+
+1. **`scripts/bump.js`** — Bumps the version in `package.json` (no git commit/tag)
+2. **`scripts/release.js`** — Reads version from `package.json`, builds, bundles, publishes
+
+### Version Bump (`release:bump`)
+
+Accepts an explicit strategy or auto-detects from git history:
 
 ```bash
-RELEASE_DRY_RUN=true GITHUB_TOKEN=test pnpm run release
+pnpm run release:bump patch   # 0.0.10 → 0.0.11
+pnpm run release:bump minor   # 0.0.10 → 0.1.0
+pnpm run release:bump major   # 0.0.10 → 1.0.0
+pnpm run release:bump 1.2.3   # explicit version
+pnpm run release:bump         # auto-detect
 ```
 
-## Available Scripts
+Auto-detection heuristic (from commits since last tag):
 
-- `pnpm run release` — Full release process
-- `pnpm run ci` — Build, test, and typecheck
+- `BREAKING CHANGE` in body or `feat!:` prefix → **major**
+- `feat:` or `feat(scope):` prefix → **minor**
+- Default → **minor**
+
+### Publish (`release:publish`)
+
+Reads the current version from `package.json` and:
+
+1. Builds the project (`pnpm run build`)
+2. Bundles prebuilt tarball with vendored apple-fm-sdk
+3. Creates GitHub release + uploads artifact (via `gh` CLI)
+4. Generates and publishes Homebrew formula to tap
+
+### Dry Run
+
+```bash
+pnpm run release:publish --dry-run
+```
+
+## Scripts
+
+- `pnpm run release` — Bump + publish in one shot (GH + Homebrew)
+- `pnpm run release:bump [patch|minor|major|version]` — Bump only
+- `pnpm run release:publish [--dry-run] [--no-brew]` — Publish (GH + Homebrew)
+- `pnpm run release:gh` — Publish to GitHub only (no Homebrew)
+- `pnpm run ci` — Build + test + typecheck
+
+## Flags
+
+- `--dry-run` — Skip actual operations (build, upload, tap push)
+- `--no-brew` — Skip Homebrew tap publishing (GitHub release only)
 
 ## Environment Variables
 
-| Variable | Description |
-|----------|-------------|
-| `GITHUB_TOKEN` | GitHub personal access token (required) |
-| `RELEASE_DRY_RUN` | Set to `"true"` to skip actual GitHub operations |
-| `TAP_REPO` | Tap repository (default: `tariqwest/homebrew-tap`) |
-| `TAP_DIR` | Local directory for tap clone (default: `~/.cache/fm-server-tap`) |
+- `APPLE_FM_SDK_PATH` — Path to ts-apple-fm-sdk (default: `../ts-apple-fm-sdk`)
+- `TAP_REPO` — Homebrew tap repository (default: `tariqwest/homebrew-tap`)
+- `TAP_DIR` — Local tap clone directory (default: `~/.cache/fm-server-tap`)
 
-## Homebrew Tap Structure
+## Homebrew Tap
 
-```
-homebrew-tap/
-├── Formula/
-│   └── fm-server.rb
-├── README.md
-└── LICENSE
-```
-
-Users can install via:
+Users install via:
 
 ```bash
 brew tap tariqwest/tap
